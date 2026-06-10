@@ -1,5 +1,13 @@
 // components/ui/VendedorAvatar.tsx — CRM Dibracam
-import { getInitials } from '../../lib/formatters';
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(p => p[0])
+    .join('')
+    .toUpperCase();
+}
 
 interface VendedorAvatarProps {
   foto: string | null;

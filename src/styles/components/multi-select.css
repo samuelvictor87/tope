@@ -28,7 +28,7 @@
 
 .multi-select-open {
   border-color: var(--color-brand-400);
-  box-shadow: 0 0 0 2px rgba(0, 26, 79, 0.1);
+  box-shadow: 0 0 0 2px rgba(252, 135, 0, 0.1);
 }
 
 .multi-select-trigger.input-error {

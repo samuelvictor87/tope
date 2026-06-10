@@ -1,0 +1,263 @@
+/* styles/components/caminhoes.css — Módulo de Caminhões TOPE */
+
+.caminhoes-header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-24);
+}
+
+.caminhoes-header-title-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.caminhoes-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.caminhoes-title-row h2 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-grey-800);
+  margin: 0;
+}
+
+.caminhoes-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-500);
+  margin: 0;
+}
+
+.caminhoes-header-actions {
+  display: flex;
+  gap: var(--spacing-12);
+}
+
+/* Transição de Fluxo: Formulário Completo */
+.caminhao-form-container {
+  background: #ffffff;
+  border-radius: var(--radius-md);
+  padding: var(--spacing-32);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.caminhao-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--color-grey-150);
+  padding-bottom: var(--spacing-20);
+  margin-bottom: var(--spacing-24);
+}
+
+.caminhao-form-title-wrapper h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-grey-800);
+  margin: 0 0 4px 0;
+}
+
+.caminhao-form-title-wrapper p {
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-500);
+  margin: 0;
+}
+
+.caminhao-form-actions {
+  display: flex;
+  gap: var(--spacing-12);
+}
+
+/* Duas Colunas do Formulário */
+.caminhao-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-32);
+  align-items: start;
+}
+
+/* Coluna da Esquerda: Ficha Técnica */
+.caminhao-fiche-tecnica-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-20);
+}
+
+.caminhao-fiche-tecnica-title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-grey-800);
+  margin: 0 0 var(--spacing-12) 0;
+  border-bottom: 1px solid var(--color-grey-100);
+  padding-bottom: var(--spacing-8);
+}
+
+/* Coluna da Direita: Card de Entre-eixos */
+.caminhao-wheelbase-card {
+  background: #f8f9fa;
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-20);
+}
+
+.caminhao-wheelbase-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-12);
+  margin-bottom: var(--spacing-20);
+}
+
+.caminhao-wheelbase-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  color: var(--color-grey-600);
+}
+
+.caminhao-wheelbase-card-title-wrapper h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-grey-850);
+  margin: 0 0 2px 0;
+}
+
+.caminhao-wheelbase-card-title-wrapper p {
+  font-size: 11px;
+  color: var(--color-grey-500);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.caminhao-wheelbase-card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+}
+
+/* Grid de duas colunas para Dimensão + Preço */
+.caminhao-wheelbase-card-fields-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-12);
+}
+
+/* Estilo do botão / checkbox "Adicionar entre-eixo" */
+.add-wheelbase-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  padding: var(--spacing-8) 0;
+  align-self: flex-start;
+  transition: opacity 0.2s;
+  user-select: none;
+}
+
+.add-wheelbase-btn:hover {
+  opacity: 0.8;
+}
+
+.add-wheelbase-btn-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--color-primary);
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.add-wheelbase-btn-checkbox::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background-color: transparent;
+  border-radius: 1px;
+}
+
+.add-wheelbase-btn:active .add-wheelbase-btn-checkbox::after {
+  background-color: var(--color-primary);
+}
+
+/* Lista de entre-eixos adicionados */
+.added-wheelbases-list {
+  margin-top: var(--spacing-24);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.added-wheelbase-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.2s;
+}
+
+.added-wheelbase-item:hover {
+  border-color: var(--color-grey-300);
+}
+
+.added-wheelbase-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.added-wheelbase-dim-price {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.added-wheelbase-dim {
+  font-weight: 600;
+  color: var(--color-grey-800);
+  font-size: 13px;
+}
+
+.added-wheelbase-price {
+  color: var(--color-grey-600);
+  font-size: 12px;
+}
+
+.added-wheelbase-specs {
+  font-size: 11px;
+  color: var(--color-grey-450);
+}
+
+.added-wheelbase-delete-btn {
+  background: none;
+  border: none;
+  color: var(--color-grey-400);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.added-wheelbase-delete-btn:hover {
+  color: var(--color-red-500);
+  background: var(--color-red-50);
+}

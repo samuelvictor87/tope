@@ -6,21 +6,22 @@
 
 :root {
   /* ─── CORES DE CORE ─────────────────────────────── */
-  --color-primary: #001A4F;
+  --color-primary: #FC8700;
   --color-primary-contrast: #FFFFFF;
   --color-text: #182230;
   --color-surface: #FFFFFF;
   --color-background: #FFFFFF;
 
   /* ─── ESCALA BRAND ──────────────────────────────── */
-  --color-brand-50: #ECF0FB;
-  --color-brand-200: #8EB7ED;
-  --color-brand-400: #254E95;
-  --color-brand-500: #001A4F;
-  --color-brand-550: #0D2D6B;
-  --color-brand-600: #001443;
-  --color-brand-800: #000A2D;
-  --color-brand-900: #000725;
+  --color-brand-50: #FFF5EB;
+  --color-brand-200: #FED7B0;
+  --color-brand-400: #FDAB54;
+  --color-brand-500: #FC8700;
+  --color-brand-550: #E07800;
+  --color-brand-600: #C26800;
+  --color-brand-700: #A35700;
+  --color-brand-800: #854700;
+  --color-brand-900: #5C3100;
 
   /* ─── ESCALA GREY ───────────────────────────────── */
   --color-grey-50: #F9FAFB;
@@ -80,7 +81,7 @@
   --color-error-900: #7A271A;
 
   /* ─── AUXILIARES ────────────────────────────────── */
-  --color-ai-variant: rgba(0, 26, 79, 0.1);
+  --color-ai-variant: rgba(252, 135, 0, 0.1);
   --color-ai-border: #E3E6EB;
 
   /* ─── TIPOGRAFIA ────────────────────────────────── */
@@ -103,6 +104,7 @@
   --spacing-8: 8px;
   --spacing-12: 12px;
   --spacing-16: 16px;
+  --spacing-20: 20px;
   --spacing-24: 24px;
   --spacing-32: 32px;
   --spacing-40: 40px;

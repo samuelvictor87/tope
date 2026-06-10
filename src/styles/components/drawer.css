@@ -111,6 +111,17 @@
   padding: var(--spacing-24);
 }
 
+/* ─── Footer Fixo ─── */
+.drawer-footer-fixed {
+  padding: var(--spacing-16) var(--spacing-24);
+  border-top: 1px solid var(--color-grey-100);
+  background: var(--color-surface);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-12);
+}
+
 /* ─── Responsive ─── */
 @media (max-width: 540px) {
   .drawer-panel {

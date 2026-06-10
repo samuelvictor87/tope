@@ -1,36 +1,39 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Button } from './components/ui/Button';
-import { Card } from './components/ui/Card';
 import { ToastProvider } from './components/ui/Toast';
 import { StyleGuidePage } from './pages/styleguide/StyleGuidePage';
-
-function Home() {
-  return (
-    <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
-      <Card>
-        <h1 style={{ marginBottom: '1rem', color: 'var(--color-primary)' }}>Mais Gestão</h1>
-        <p style={{ marginBottom: '2rem', color: 'var(--color-grey-500)' }}>
-          Projeto inicializado com sucesso na porta 3002!
-        </p>
-        <Button variant="primary" onClick={() => alert('Funcionando!')}>
-          Testar Componente
-        </Button>
-        <div style={{ marginTop: '2rem' }}>
-          <a href="/styleguide" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Ir para o Styleguide</a>
-        </div>
-      </Card>
-    </div>
-  );
-}
+import { LoginPage } from './pages/login/LoginPage';
+import { DashboardPage } from './pages/dashboard/DashboardPage';
+import { UsuariosPage } from './pages/usuarios/UsuariosPage';
+import { ClientesPage } from './pages/clientes/ClientesPage';
+import { FornecedoresPage } from './pages/fornecedores/FornecedoresPage';
+import { MeusDadosPage } from './pages/meus-dados/MeusDadosPage';
+import { ImplementosPage } from './pages/implementos/ImplementosPage';
+import { CaminhoesPage } from './pages/caminhoes/CaminhoesPage';
 
 export default function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
         <Routes>
-          <Route path="/" element={<Home />} />
+          {/* Rota principal de Login */}
+          <Route path="/" element={<LoginPage />} />
+
+          {/* Rota do Dashboard Principal */}
+          <Route path="/dashboard" element={<DashboardPage />} />
+
+          {/* Rotas dos menus de cadastro (placeholders temporários) */}
+          <Route path="/usuarios" element={<UsuariosPage />} />
+          <Route path="/caminhoes" element={<CaminhoesPage />} />
+          <Route path="/implementos" element={<ImplementosPage />} />
+          <Route path="/fornecedores" element={<FornecedoresPage />} />
+          <Route path="/clientes" element={<ClientesPage />} />
+          <Route path="/meus-dados" element={<MeusDadosPage />} />
+          <Route path="/configuracoes" element={<MeusDadosPage />} />
+
+          {/* Rota do Styleguide */}
           <Route path="/styleguide" element={<StyleGuidePage />} />
+
+          {/* Redirecionamento de rotas inexistentes */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ToastProvider>

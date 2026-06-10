@@ -1,0 +1,223 @@
+/* styles/components/usuarios.css — CRM Dibracam */
+
+/* Cabeçalho da página */
+.usuarios-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-24);
+  flex-wrap: wrap;
+  gap: var(--spacing-16);
+}
+
+.usuarios-header-info h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+  margin-bottom: 4px;
+}
+
+.usuarios-header-info p {
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-500);
+  margin: 0;
+}
+
+/* Filtros */
+.usuarios-filters {
+  display: flex;
+  gap: var(--spacing-12);
+  align-items: center;
+  margin-bottom: var(--spacing-24);
+  flex-wrap: wrap;
+}
+
+.usuarios-search-wrap {
+  flex: 1;
+  min-width: 240px;
+}
+
+.usuarios-select-wrap {
+  width: 180px;
+}
+
+.usuarios-count {
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-500);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Tabela e Células */
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-name {
+  font-weight: 600;
+  color: var(--color-grey-800);
+}
+
+.user-email {
+  font-size: var(--font-size-xs);
+  color: var(--color-grey-500);
+}
+
+.badge-profile {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 2px 10px;
+  border: 1px solid transparent;
+}
+
+.badge-profile-admin {
+  background-color: rgba(252, 135, 0, 0.1);
+  color: #e06c00;
+  border-color: rgba(252, 135, 0, 0.2);
+}
+
+.badge-profile-vendedor {
+  background-color: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, 0.15);
+}
+
+.badge-profile-suporte {
+  background-color: rgba(13, 148, 136, 0.08);
+  color: #0d9488;
+  border-color: rgba(13, 148, 136, 0.15);
+}
+
+.badge-profile-gestor {
+  background-color: rgba(219, 39, 119, 0.08);
+  color: #db2777;
+  border-color: rgba(219, 39, 119, 0.15);
+}
+
+.badge-profile-fornecedor {
+  background-color: rgba(30, 41, 59, 0.08);
+  color: #1e293b;
+  border-color: rgba(30, 41, 59, 0.15);
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  color: var(--color-grey-400);
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn:hover {
+  background-color: var(--color-grey-100);
+}
+
+.action-btn-edit:hover {
+  color: var(--color-primary);
+}
+
+.action-btn-delete:hover {
+  color: var(--color-destructive);
+}
+
+/* Foto Uploader no Drawer — Estilo CRM */
+.photo-uploader-container-crm {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-16);
+  background: var(--color-grey-50);
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-12) var(--spacing-16);
+  width: 100%;
+}
+
+.photo-uploader-avatar-crm {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--color-grey-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-grey-500);
+  overflow: hidden;
+  border: 1px solid var(--color-grey-300);
+}
+
+.photo-uploader-avatar-crm img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-uploader-content-crm {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  flex: 1;
+}
+
+.photo-uploader-btn-crm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #ffffff;
+  border: 1px solid var(--color-grey-300);
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-grey-700);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.photo-uploader-btn-crm:hover {
+  background-color: var(--color-grey-50);
+  border-color: var(--color-grey-400);
+}
+
+.photo-uploader-formats-crm {
+  font-size: 11px;
+  color: var(--color-grey-450);
+}
+
+/* Grid de Formulários no Drawer */
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-16);
+  margin-bottom: var(--spacing-16);
+}
+
+.form-field-full {
+  margin-bottom: var(--spacing-16);
+}
+
+/* Footer do Drawer */
+.drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-12);
+  margin-top: var(--spacing-32);
+  padding-top: var(--spacing-16);
+  border-top: 1px solid var(--color-grey-150);
+}

@@ -1,0 +1,189 @@
+/* styles/components/fornecedores.css — CRM Dibracam / TOPE */
+
+/* Seção do cabeçalho da página de fornecedores */
+.fornecedores-header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-24);
+}
+
+.fornecedores-header-title-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fornecedores-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.fornecedores-title-row h2 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-grey-800);
+  margin: 0;
+}
+
+.fornecedores-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-500);
+  margin: 0;
+}
+
+.fornecedores-header-actions {
+  display: flex;
+  gap: var(--spacing-12);
+}
+
+/* Células de Razão Social e CNPJ */
+.fornecedor-cell-razao {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fornecedor-razao-text {
+  font-weight: 600;
+  color: var(--color-grey-800);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.fornecedor-cnpj-text {
+  font-size: 11px;
+  color: var(--color-grey-450);
+}
+
+/* Células de Usuário (Login e Notificações) e Contato */
+.fornecedor-cell-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fornecedor-info-name {
+  font-weight: 500;
+  color: var(--color-grey-800);
+  font-size: var(--font-size-sm);
+}
+
+.fornecedor-info-detail {
+  font-size: var(--font-size-xs);
+  color: var(--color-grey-500);
+}
+
+/* Célula de Implementos */
+.fornecedor-implementos-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Estrutura de Seções do Formulário (Drawer) */
+.fornecedor-form-sections-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.fornecedor-form-section {
+  display: flex;
+  gap: var(--spacing-24);
+  padding: var(--spacing-24) 0;
+  border-bottom: 1px solid var(--color-grey-150);
+}
+
+.fornecedor-form-section:last-child {
+  border-bottom: none;
+  padding-bottom: var(--spacing-12);
+}
+
+.fornecedor-section-info {
+  width: 150px;
+  flex-shrink: 0;
+}
+
+.fornecedor-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-grey-800);
+  margin: 0 0 var(--spacing-4) 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fornecedor-section-desc {
+  font-size: 11px;
+  color: var(--color-grey-450);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.fornecedor-section-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+}
+
+/* Grids e Layouts de Inputs */
+.input-row-equal {
+  display: flex;
+  gap: var(--spacing-12);
+}
+
+.input-row-equal > * {
+  flex: 1;
+}
+
+/* Linha CEP + Endereço */
+.input-row-cep-address {
+  display: flex;
+  gap: var(--spacing-12);
+}
+
+.input-row-cep-address .cep-field {
+  width: 130px;
+  flex-shrink: 0;
+}
+
+.input-row-cep-address .address-field {
+  flex: 1;
+}
+
+/* Linha Número + Complemento */
+.input-row-num-compl {
+  display: flex;
+  gap: var(--spacing-12);
+}
+
+.input-row-num-compl .num-field {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.input-row-num-compl .compl-field {
+  flex: 1;
+}
+
+/* Linha Bairro + Cidade + Estado */
+.input-row-city-state {
+  display: flex;
+  gap: var(--spacing-12);
+}
+
+.input-row-city-state .bairro-field {
+  flex: 1.5;
+}
+
+.input-row-city-state .city-field {
+  flex: 2;
+}
+
+.input-row-city-state .state-field {
+  width: 75px;
+  flex-shrink: 0;
+}

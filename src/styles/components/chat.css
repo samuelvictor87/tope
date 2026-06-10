@@ -1652,7 +1652,7 @@
 .template-card.selected {
   border-color: var(--color-primary);
   background: var(--color-brand-50);
-  box-shadow: 0 0 0 2px rgba(0, 26, 79, 0.08);
+  box-shadow: 0 0 0 2px rgba(252, 135, 0, 0.08);
 }
 
 .template-card:disabled {
@@ -1732,7 +1732,7 @@
 .template-modal-send:hover:not(:disabled) {
   background: var(--color-brand-700, #1e3a8a);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 26, 79, 0.25);
+  box-shadow: 0 4px 12px rgba(252, 135, 0, 0.25);
 }
 
 .template-modal-send:disabled {
@@ -1906,7 +1906,7 @@
 .img-paste-btn-send:hover:not(:disabled) {
   background: var(--color-brand-700, #1e3a8a);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 26, 79, 0.25);
+  box-shadow: 0 4px 12px rgba(252, 135, 0, 0.25);
 }
 
 .img-paste-btn-send:disabled {

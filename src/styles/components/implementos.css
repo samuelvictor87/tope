@@ -1,0 +1,145 @@
+/* styles/components/implementos.css — Módulo de Implementos TOPE */
+
+.implementos-header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-24);
+}
+
+.implementos-header-title-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.implementos-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.implementos-title-row h2 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-grey-800);
+  margin: 0;
+}
+
+.implementos-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-500);
+  margin: 0;
+}
+
+.implementos-header-actions {
+  display: flex;
+  gap: var(--spacing-12);
+}
+
+/* Tabs do Módulo */
+.implementos-tabs-container {
+  margin-bottom: var(--spacing-24);
+}
+
+.implementos-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--color-grey-200);
+}
+
+.implementos-tab-btn {
+  background: none;
+  border: none;
+  padding: 8px 0 12px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-grey-500);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.implementos-tab-btn:hover {
+  color: var(--color-grey-700);
+}
+
+.implementos-tab-btn.active {
+  color: var(--color-primary);
+}
+
+.implementos-tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: var(--color-primary);
+  border-radius: 2px 2px 0 0;
+}
+
+/* Form Drawers */
+.implemento-form-sections-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.implemento-form-section {
+  display: flex;
+  gap: var(--spacing-24);
+  padding: var(--spacing-24) 0;
+  border-bottom: 1px solid var(--color-grey-150);
+}
+
+.implemento-form-section:last-child {
+  border-bottom: none;
+  padding-bottom: var(--spacing-12);
+}
+
+.implemento-section-info {
+  width: 150px;
+  flex-shrink: 0;
+}
+
+.implemento-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-grey-800);
+  margin: 0 0 var(--spacing-4) 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.implemento-section-desc {
+  font-size: 11px;
+  color: var(--color-grey-450);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.implemento-section-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+}
+
+/* Wheelbase layout */
+.wheelbases-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: var(--spacing-12);
+  margin-top: var(--spacing-8);
+}
+
+.wheelbase-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-700);
+  cursor: pointer;
+  user-select: none;
+}

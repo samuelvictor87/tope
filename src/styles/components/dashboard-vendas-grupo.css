@@ -67,7 +67,7 @@
 .vg-date-input:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(0, 26, 79, 0.1);
+  box-shadow: 0 0 0 2px rgba(252, 135, 0, 0.1);
 }
 
 .vg-filters-actions {

@@ -13,6 +13,7 @@ interface DrawerProps {
   width?: string;
   children: React.ReactNode;
   actions?: React.ReactNode;
+  footer?: React.ReactNode;
 }
 
 export function Drawer({
@@ -24,6 +25,7 @@ export function Drawer({
   width = '480px',
   children,
   actions,
+  footer,
 }: DrawerProps) {
   // Fechar com Escape
   useEffect(() => {
@@ -70,6 +72,13 @@ export function Drawer({
         <div className="drawer-body">
           {children}
         </div>
+
+        {/* Rodapé fixo */}
+        {footer && (
+          <div className="drawer-footer-fixed">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body

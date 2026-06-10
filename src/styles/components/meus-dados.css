@@ -1,0 +1,120 @@
+/* styles/components/meus-dados.css — CRM Dibracam / TOPE */
+
+.meus-dados-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-24);
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* Card Principal */
+.meus-dados-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-32);
+  box-shadow: var(--shadow-sm);
+}
+
+.meus-dados-card-title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-grey-800);
+  margin: 0 0 4px 0;
+}
+
+.meus-dados-card-desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-grey-450);
+  margin: 0 0 var(--spacing-24) 0;
+}
+
+/* Uploader de Foto do Perfil (CRM Style) */
+.meus-dados-photo-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-20);
+  margin-bottom: var(--spacing-28);
+}
+
+.meus-dados-avatar-wrapper {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background-color: var(--color-grey-100);
+  border: 1px solid var(--color-grey-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-grey-500);
+}
+
+.meus-dados-avatar-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.meus-dados-photo-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meus-dados-photo-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-grey-300);
+  color: var(--color-grey-700);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  padding: 8px var(--spacing-16);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.meus-dados-photo-btn:hover {
+  background-color: var(--color-grey-50);
+  border-color: var(--color-grey-400);
+}
+
+.meus-dados-photo-hint {
+  font-size: 11px;
+  color: var(--color-grey-400);
+}
+
+/* Grid de Campos */
+.meus-dados-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-16) var(--spacing-20);
+}
+
+.meus-dados-full-width {
+  grid-column: span 2;
+}
+
+/* Container de Senha (Largura Controlada a 50%) */
+.senha-form-container {
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+}
+
+/* Botões do Rodapé do Form */
+.meus-dados-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-12);
+  margin-top: var(--spacing-32);
+  padding-top: var(--spacing-24);
+  border-top: 1px solid var(--color-grey-150);
+}

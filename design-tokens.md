@@ -11,7 +11,7 @@ Usadas para a fundação da interface e elementos estruturais.
 
 | Token | Valor Hex | Descrição |
 | :--- | :--- | :--- |
-| `--color-primary` | `#001A4F` | Ação principal, branding, elementos de destaque. |
+| `--color-primary` | `#FC8700` | Ação principal, branding, elementos de destaque. |
 | `--color-primary-contrast` | `#FFFFFF` | Contraste sobre a cor primária (ex: texto em botões). |
 | `--color-text` | `#182230` | Cor de texto padrão (alta legibilidade). |
 | `--color-surface` | `#FFFFFF` | Camada superior (elevação), como cards e menus. |
@@ -89,14 +89,15 @@ Variações da identidade visual para tons de hover, sombras e profundidade.
 
 | Nível | Valor Hex |
 | :--- | :--- |
-| `50` | `#ECF0FB` (Subtle bg) |
-| `200` | `#8EB7ED` |
-| `400` | `#254E95` |
-| `500` (Base) | `#001A4F` |
-| `550` | `#0D2D6B` |
-| `600` | `#001443` |
-| `800` | `#000A2D` |
-| `900` | `#000725` |
+| `50` | `#FFF5EB` (Subtle bg) |
+| `200` | `#FED7B0` |
+| `400` | `#FDAB54` |
+| `500` (Base) | `#FC8700` |
+| `550` | `#E07800` |
+| `600` | `#C26800` |
+| `700` | `#A35700` |
+| `800` | `#854700` |
+| `900` | `#5C3100` |
 
 ---
 
@@ -167,7 +168,7 @@ Cores específicas para funcionalidades ou variações pontuais.
 
 | Token | Valor Hex | Notas |
 | :--- | :--- | :--- |
-| `--color-ai-variant` | `rgba(0, 26, 79, 0.1)` | Toque de cor da marca com opacidade (ex: áreas de IA). |
+| `--color-ai-variant` | `rgba(252, 135, 0, 0.1)` | Toque de cor da marca com opacidade (ex: áreas de IA). |
 | `--color-ai-border` | `#E3E6EB` | Bordas suaves para elementos auxiliares. |
 
 ---

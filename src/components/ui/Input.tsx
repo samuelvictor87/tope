@@ -1,5 +1,5 @@
 // components/ui/Input.tsx — CRM Dibracam
-import React from 'react';
+import React, { useId } from 'react';
 import '../../styles/components/input.css';
 import '../../styles/components/select.css';
 
@@ -12,7 +12,8 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export function Input({ label, error, icon, required, className = '', id, ...rest }: InputProps) {
-  const inputId = id ?? `input-${Math.random().toString(36).slice(2)}`;
+  const reactId = useId();
+  const inputId = id ?? reactId;
   return (
     <div className="input-wrapper">
       {label && (
@@ -43,7 +44,8 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 export function Select({ label, error, required, options, placeholder, className = '', id, ...rest }: SelectProps) {
-  const selectId = id ?? `select-${Math.random().toString(36).slice(2)}`;
+  const reactId = useId();
+  const selectId = id ?? reactId;
   return (
     <div className="input-wrapper">
       {label && (
@@ -70,7 +72,8 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 
 export function Textarea({ label, error, required, className = '', id, ...rest }: TextareaProps) {
-  const textId = id ?? `textarea-${Math.random().toString(36).slice(2)}`;
+  const reactId = useId();
+  const textId = id ?? reactId;
   return (
     <div className="input-wrapper">
       {label && (
