@@ -1,5 +1,5 @@
 // pages/fornecedores/FornecedoresPage.tsx — Módulo de Fornecedores TOPE
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Pencil, Trash, Question } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';

@@ -1,5 +1,5 @@
 // pages/implementos/ImplementosPage.tsx — Módulo de Implementos TOPE
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Pencil, Trash } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -52,27 +52,16 @@ const WHEELBASE_OPTIONS = [
   { value: '5207', label: '5207' }
 ];
 
-const IMPLEMENTO_OPTIONS = [
-  { value: 'furgao-bau', label: 'Furgão Baú' },
-  { value: 'sider', label: 'Sider' },
-  { value: 'grade-baixa', label: 'Grade Baixa' },
-  { value: 'porta-conteiner', label: 'Porta Contêiner' },
-  { value: 'basculante', label: 'Basculante' },
-  { value: 'prancha', label: 'Prancha' },
-  { value: 'frigorifico', label: 'Frigorífico' }
-];
 
-const FILTER_IMPLEMENTO_OPTIONS: OptionType[] = [
-  { value: 'Todos', label: 'Implementos (Todos)' },
-  ...IMPLEMENTO_OPTIONS
-];
+
+
 
 export function ImplementosPage() {
   const toast = useToast();
   
   // Abas
   const [activeTab, setActiveTab] = useState<'categorias' | 'atributos' | 'opcoes'>('categorias');
-  const [filtersOpen, setFiltersOpen] = useState(false);
+
 
   // Estados dos Dados
   const [categorias, setCategorias] = useState<Categoria[]>([]);
@@ -127,7 +116,7 @@ export function ImplementosPage() {
   const ITEMS_PER_PAGE = 10;
 
   const [dbCategorias, setDbCategorias] = useState<OptionType[]>([]);
-  const [dbAtributos, setDbAtributos] = useState<OptionType[]>([]);
+  const [dbAtributos, setDbAtributos] = useState<(OptionType & { categoryId?: string })[]>([]);
 
   const loadFilterOptions = async () => {
     try {
