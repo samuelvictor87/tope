@@ -1,5 +1,5 @@
 // pages/meus-dados/MeusDadosPage.tsx — Módulo de Perfil e Configurações TOPE
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Camera } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -7,6 +7,8 @@ import { Select } from '../../components/ui/Select';
 import type { OptionType } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import '../../styles/components/configuracoes.css';
 
 const TABS = [
@@ -25,52 +27,113 @@ const maskPhone = (val: string) => {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 3)} ${digits.slice(3, 7)}-${digits.slice(7)}`;
 };
 
+const getRoleOption = (perfil?: string): OptionType => {
+  if (!perfil) return { value: 'vendedor', label: 'Vendedor' };
+  const label = perfil.charAt(0).toUpperCase() + perfil.slice(1);
+  return { value: perfil, label };
+};
+
 export function MeusDadosPage() {
   const toast = useToast();
+  const { user, profile, refreshProfile } = useAuth();
   const [activeTab, setActiveTab] = useState('dados');
-
-  // Dados salvos (simulação de persistência)
-  const [savedName, setSavedName] = useState('Pedro Pelosini');
-  const [savedEmail, setSavedEmail] = useState('pedro@dibracam.com.br');
-  const [savedWhatsapp, setSavedWhatsapp] = useState('(11) 97395-9250');
-  const [savedAvatar, setSavedAvatar] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Estados dos formulários (editação temporária)
-  const [formName, setFormName] = useState(savedName);
-  const [formEmail, setFormEmail] = useState(savedEmail);
-  const [formWhatsapp, setFormWhatsapp] = useState(savedWhatsapp);
-  const [formAvatar, setFormAvatar] = useState<string | null>(savedAvatar);
-  const [formProfile, setFormProfile] = useState<OptionType | null>({ value: 'Administrador', label: 'Administrador' });
+  const [formName, setFormName] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formWhatsapp, setFormWhatsapp] = useState('');
+  const [formAvatar, setFormAvatar] = useState<string | null>(null);
+  const [formProfile, setFormProfile] = useState<OptionType | null>(null);
+  const [savingDados, setSavingDados] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Erro de tamanho', 'A imagem deve ter no máximo 2MB.');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Erro de tipo', 'Por favor, selecione um arquivo de imagem.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setFormAvatar(base64String);
+      toast.success('Foto anexada com sucesso!');
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Estados do formulário de Senha
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingSenha, setSavingSenha] = useState(false);
+
+  // Inicializa dados do formulário a partir do perfil carregado
+  useEffect(() => {
+    if (profile) {
+      setFormName(profile.nome_completo || '');
+      setFormEmail(profile.email || '');
+      setFormWhatsapp(profile.whatsapp ? maskPhone(profile.whatsapp) : '');
+      setFormAvatar(profile.avatar_url);
+      setFormProfile(getRoleOption(profile.perfil));
+    }
+  }, [profile]);
 
   // Cancelar edições da aba Meus dados
   const handleCancelDados = () => {
-    setFormName(savedName);
-    setFormEmail(savedEmail);
-    setFormWhatsapp(savedWhatsapp);
-    setFormAvatar(savedAvatar);
-    setFormProfile({ value: 'Administrador', label: 'Administrador' });
+    if (profile) {
+      setFormName(profile.nome_completo || '');
+      setFormEmail(profile.email || '');
+      setFormWhatsapp(profile.whatsapp ? maskPhone(profile.whatsapp) : '');
+      setFormAvatar(profile.avatar_url);
+      setFormProfile(getRoleOption(profile.perfil));
+    }
     toast.info('Alterações descartadas.');
   };
 
   // Salvar dados da aba Meus dados
-  const handleSaveDados = (e: React.FormEvent) => {
+  const handleSaveDados = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formName.trim() || !formEmail.trim()) {
-      toast.error('Campos obrigatórios', 'Por favor, preencha o seu nome e e-mail.');
+    if (!user) return;
+
+    if (!formName.trim()) {
+      toast.error('Campos obrigatórios', 'Por favor, preencha o seu nome.');
       return;
     }
 
-    setSavedName(formName.trim());
-    setSavedEmail(formEmail.trim());
-    setSavedWhatsapp(formWhatsapp.trim());
-    setSavedAvatar(formAvatar);
-    toast.success('Perfil atualizado com sucesso!');
+    setSavingDados(true);
+
+    try {
+      const { error } = await supabase
+        .from('usuarios')
+        .update({
+          nome_completo: formName.trim(),
+          whatsapp: formWhatsapp.trim() || null,
+          avatar_url: formAvatar,
+        })
+        .eq('usuario_id', user.id);
+
+      if (error) {
+        toast.error('Erro ao salvar', 'Não foi possível atualizar seus dados.');
+      } else {
+        await refreshProfile();
+        toast.success('Perfil atualizado com sucesso!');
+      }
+    } catch (err) {
+      console.error('Error saving profile:', err);
+      toast.error('Erro ao salvar', 'Ocorreu um erro ao atualizar o perfil.');
+    } finally {
+      setSavingDados(false);
+    }
   };
 
   // Cancelar aba de Senha
@@ -82,11 +145,18 @@ export function MeusDadosPage() {
   };
 
   // Salvar senha
-  const handleSaveSenha = (e: React.FormEvent) => {
+  const handleSaveSenha = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!user) return;
 
     if (!currentPassword || !newPassword || !confirmPassword) {
       toast.error('Campos obrigatórios', 'Por favor, preencha todos os campos de senha.');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      toast.error('Erro de validação', 'A nova senha deve ter pelo menos 8 caracteres.');
       return;
     }
 
@@ -95,30 +165,53 @@ export function MeusDadosPage() {
       return;
     }
 
-    // Sucesso simulado
-    toast.success('Senha alterada com sucesso!');
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-  };
+    setSavingSenha(true);
 
-  // Simular upload de foto de perfil
-  const handleSimulatePhotoUpload = () => {
-    if (formAvatar) {
-      setFormAvatar(null);
-      toast.info('Foto removida.');
-    } else {
-      const mockAvatars = [
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=100',
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=100',
-        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=100',
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=100'
-      ];
-      const randomIdx = Math.floor(Math.random() * mockAvatars.length);
-      setFormAvatar(mockAvatars[randomIdx]);
-      toast.success('Foto anexada com sucesso!');
+    try {
+      // 1. Validar a senha atual autenticando o usuário silenciosamente via REST API direta do GoTrue
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: user.email!,
+          password: currentPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        toast.error('Erro de validação', 'A senha atual informada está incorreta.');
+        setSavingSenha(false);
+        return;
+      }
+
+      // 2. Senha atual válida, proceder com a atualização de senha no Supabase Auth global
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        toast.error('Erro', 'Não foi possível atualizar a senha.');
+      } else {
+        toast.success('Senha alterada com sucesso!');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (err) {
+      console.error('Error updating password:', err);
+      toast.error('Erro', 'Ocorreu um erro inesperado ao alterar a senha.');
+    } finally {
+      setSavingSenha(false);
     }
   };
+
+
 
   return (
     <DashboardLayout
@@ -168,11 +261,35 @@ export function MeusDadosPage() {
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={handleSimulatePhotoUpload}
+                      onClick={() => {
+                        if (formAvatar) {
+                          setFormAvatar(null);
+                          toast.info('Foto removida.');
+                        } else {
+                          fileInputRef.current?.click();
+                        }
+                      }}
                     >
                       <Camera size={18} style={{marginRight: 8, display: 'inline-block', verticalAlign: 'middle'}} />
                       {formAvatar ? 'Remover foto' : 'Alterar foto...'}
                     </Button>
+                    {formAvatar && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        style={{ marginLeft: 8 }}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        Alterar foto...
+                      </Button>
+                    )}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                    />
                     <p style={{fontSize: 12, color: 'var(--color-grey-500)', marginTop: 8}}>
                       Formatos aceitos: JPG, PNG. Máx 2MB.
                     </p>
@@ -208,12 +325,12 @@ export function MeusDadosPage() {
                     <Select
                       label="Tipo de usuário"
                       options={[
-                        { value: 'Administrador', label: 'Administrador' },
-                        { value: 'Vendedor', label: 'Vendedor' },
-                        { value: 'Fornecedor', label: 'Fornecedor' }
+                        { value: 'administrador', label: 'Administrador' },
+                        { value: 'vendedor', label: 'Vendedor' },
+                        { value: 'fornecedor', label: 'Fornecedor' }
                       ]}
                       value={formProfile}
-                      onChange={(opt) => setFormProfile(opt as OptionType)}
+                      onChange={() => {}}
                       isDisabled
                     />
                   </div>
@@ -225,7 +342,7 @@ export function MeusDadosPage() {
                 <Button variant="secondary" type="button" onClick={handleCancelDados}>
                   Cancelar
                 </Button>
-                <Button variant="primary" type="submit">
+                <Button variant="primary" type="submit" loading={savingDados}>
                   Salvar
                 </Button>
               </div>
@@ -238,7 +355,7 @@ export function MeusDadosPage() {
                   <p>Por favor, insira sua senha atual para alterar sua senha.</p>
                 </div>
 
-                {/* Inputs de Senha do CRM */}
+                {/* Inputs de Senha */}
                 <div className="config-password-fields" style={{ maxWidth: 480 }}>
                   <div className="password-row">
                     <label htmlFor="cfg_senha_atual">Senha atual</label>
@@ -281,7 +398,7 @@ export function MeusDadosPage() {
                 <Button variant="secondary" type="button" onClick={handleCancelSenha}>
                   Cancelar
                 </Button>
-                <Button variant="primary" type="submit">
+                <Button variant="primary" type="submit" loading={savingSenha}>
                   Salvar
                 </Button>
               </div>

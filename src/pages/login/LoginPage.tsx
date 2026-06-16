@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import logoTope from '../../assets/logo-tope.png';
 import bgLogin from '../../assets/login-bg.jpg';
 import '../../styles/components/login.css';
@@ -10,15 +12,22 @@ import '../../styles/components/login.css';
 export function LoginPage() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user, loading: authLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Redireciona se o usuário já estiver autenticado
+  useEffect(() => {
+    if (user && !authLoading) {
+      navigate('/painel/usuarios');
+    }
+  }, [user, authLoading, navigate]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validação mock com credenciais de referência
     if (!email || !password) {
       toast.error('Campos obrigatórios', 'Por favor, preencha todos os campos.');
       return;
@@ -26,21 +35,48 @@ export function LoginPage() {
 
     setLoading(true);
 
-    // Simular requisição de autenticação
-    setTimeout(() => {
-      setLoading(false);
-      if (email === 'pedro@dibracam.com.br' && password === 'F]f;1aN9') {
-        // Credenciais corretas -> Navega para o painel
-        navigate('/dashboard');
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        toast.error('Erro de autenticação', 'E-mail ou senha incorretos.');
       } else {
-        toast.error('E-mail ou senha incorretos.');
+        toast.success('Sucesso', 'Bem-vindo de volta!');
+        navigate('/painel/usuarios');
       }
-    }, 1000);
+    } catch (err) {
+      console.error('Login error:', err);
+      toast.error('Erro de autenticação', 'Ocorreu um erro ao tentar fazer login.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleForgotPassword = () => {
     toast.info('Recuperação de senha', 'Um link para redefinição de senha seria enviado ao seu email.');
   };
+
+  if (authLoading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          minHeight: '100vh',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'var(--color-bg-base)',
+          color: 'var(--color-primary)',
+          fontWeight: 600,
+          fontFamily: 'Inter, sans-serif',
+        }}
+      >
+        Carregando...
+      </div>
+    );
+  }
 
   return (
     <div className="login-page">
@@ -124,9 +160,9 @@ export function LoginPage() {
         {/* Informações para desenvolvimento e testes */}
         <div className="login-dev-hint">
           <strong>Acesso para Testes:</strong>
-          <span>E-mail: <code>pedro@dibracam.com.br</code></span>
+          <span>E-mail: <code>samuelvictor87@hotmail.com</code> ou <code>pedro@dibracam.com.br</code></span>
           <br />
-          <span>Senha: <code>F]f;1aN9</code></span>
+          <span>Senha: <code>12345678</code></span>
         </div>
 
         <div

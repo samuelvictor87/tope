@@ -1,6 +1,6 @@
 // pages/caminhoes/CaminhoesPage.tsx — Módulo de Caminhões TOPE
-import { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash, Funnel, ArrowsLeftRight } from '@phosphor-icons/react';
+import { useState, useEffect } from 'react';
+import { Plus, Pencil, Trash, ArrowsLeftRight } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
@@ -9,6 +9,8 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { useToast } from '../../components/ui/Toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { Pagination } from '../../components/ui/Pagination';
+import { supabase } from '../../lib/supabase';
 import '../../styles/components/caminhoes.css';
 import '../../styles/components/table.css';
 
@@ -50,149 +52,6 @@ const TRANSMISSION_OPTIONS: OptionType[] = [
   { value: 'Manual', label: 'Manual' }
 ];
 
-// Dados Iniciais extraídos do Print do Usuário
-const INITIAL_CAMINHOES: Caminhao[] = [
-  {
-    id: '1',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '31-320 DC V-Tronic 6x4',
-    transmission: 'Automatizada',
-    wheelbases: [
-      { dimension: '3440', price: '560000', curbWeight: '4100', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' },
-      { dimension: '4580', price: '570000', curbWeight: '4300', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '2',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '30-320 SC V-Tronic 8x2',
-    transmission: 'Automatizada',
-    wheelbases: [
-      { dimension: '6100', price: '574000', curbWeight: '4200', technicalPbt: '29000', homologatedPbt: '29000', homologatedPbtc: '54000', priceValidity: '03/11/2025' },
-      { dimension: '6500', price: '574000', curbWeight: '4300', technicalPbt: '29000', homologatedPbt: '29000', homologatedPbtc: '54000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '3',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '27-260 DC 6x4',
-    transmission: 'Manual',
-    wheelbases: [
-      { dimension: '4800', price: '489000', curbWeight: '4000', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' },
-      { dimension: '5940', price: '499000', curbWeight: '4200', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '4',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '26-320 SC V-Tronic',
-    transmission: 'Automatizada',
-    wheelbases: [
-      { dimension: '5207', price: '502000', curbWeight: '4100', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '5',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '26-320 SC V-Tronic',
-    transmission: 'Automatizada',
-    wheelbases: [
-      { dimension: '4800', price: '502000', curbWeight: '4100', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' },
-      { dimension: '5207', price: '502000', curbWeight: '4200', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '6',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '26-320 SC',
-    transmission: 'Manual',
-    wheelbases: [
-      { dimension: '4800', price: '487000', curbWeight: '4000', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' },
-      { dimension: '5207', price: '487000', curbWeight: '4100', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '7',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '26-320 DC V-Tronic',
-    transmission: 'Automática',
-    wheelbases: [
-      { dimension: '4800', price: '492000', curbWeight: '4100', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' },
-      { dimension: '5207', price: '492000', curbWeight: '4200', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '8',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '26-320 DC',
-    transmission: 'Manual',
-    wheelbases: [
-      { dimension: '4800', price: '477000', curbWeight: '4000', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' },
-      { dimension: '5207', price: '477000', curbWeight: '4100', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '9',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '25-480 HD SC',
-    transmission: 'Automatizada',
-    wheelbases: [
-      { dimension: '3600', price: '628000', curbWeight: '4100', technicalPbt: '23000', homologatedPbt: '23000', homologatedPbtc: '42000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '10',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '20-480 SC',
-    transmission: 'Automatizada',
-    wheelbases: [
-      { dimension: '3600', price: '599900', curbWeight: '4100', technicalPbt: '20000', homologatedPbt: '20000', homologatedPbtc: '38000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '11',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '19-380 SCv',
-    transmission: 'Automatizada',
-    wheelbases: [
-      { dimension: '3560', price: '525000', curbWeight: '4000', technicalPbt: '19000', homologatedPbt: '19000', homologatedPbtc: '35000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '12',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '17-210',
-    transmission: 'Manual',
-    wheelbases: [
-      { dimension: '4800', price: '395000', curbWeight: '3800', technicalPbt: '16000', homologatedPbt: '16000', homologatedPbtc: '30000', priceValidity: '03/11/2025' },
-      { dimension: '5207', price: '395000', curbWeight: '3900', technicalPbt: '16000', homologatedPbt: '16000', homologatedPbtc: '30000', priceValidity: '03/11/2025' }
-    ]
-  },
-  {
-    id: '13',
-    createdAt: '03/11/2025',
-    family: 'Constellation',
-    model: '14-210',
-    transmission: 'Manual',
-    wheelbases: [
-      { dimension: '4800', price: '385000', curbWeight: '3700', technicalPbt: '14000', homologatedPbt: '14000', homologatedPbtc: '28000', priceValidity: '03/11/2025' },
-      { dimension: '5207', price: '385000', curbWeight: '3800', technicalPbt: '14000', homologatedPbt: '14000', homologatedPbtc: '28000', priceValidity: '03/11/2025' }
-    ]
-  }
-];
-
 // Auxiliares de formatação de moeda
 const formatPrice = (val: string | number) => {
   const num = typeof val === 'string' ? parseFloat(val) : val;
@@ -224,13 +83,13 @@ export function CaminhoesPage() {
   const toast = useToast();
 
   // Estados locais
-  const [caminhoes, setCaminhoes] = useState<Caminhao[]>(INITIAL_CAMINHOES);
+  const [caminhoes, setCaminhoes] = useState<Caminhao[]>([]);
   const [isFormMode, setIsFormMode] = useState(false);
   const [editingCaminhao, setEditingCaminhao] = useState<Caminhao | null>(null);
   
   // Filtros
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterFamily, setFilterFamily] = useState<OptionType | null>({ value: 'Todos', label: 'Família (Todas)' });
 
   // Formulário - Ficha Técnica
@@ -254,15 +113,78 @@ export function CaminhoesPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [caminhaoToDelete, setCaminhaoToDelete] = useState<{ id: string; model: string } | null>(null);
 
-  // Filtragem Dinâmica da Tabela
-  const filteredCaminhoes = useMemo(() => {
-    return caminhoes.filter(cam => {
-      const matchesSearch = cam.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            cam.family.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesFamily = !filterFamily || filterFamily.value === 'Todos' || cam.family === filterFamily.value;
-      return matchesSearch && matchesFamily;
-    });
-  }, [caminhoes, searchTerm, filterFamily]);
+  // Estados de Carregamento e Paginação
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const ITEMS_PER_PAGE = 10;
+
+  // Carregar Caminhões do Supabase
+  const loadCaminhoes = async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('caminhoes')
+        .select('*, caminhoes_entre_eixos(*)', { count: 'exact' });
+
+      if (debouncedSearch.trim()) {
+        const term = `%${debouncedSearch.trim()}%`;
+        query = query.or(`modelo.ilike.${term},familia.ilike.${term}`);
+      }
+
+      if (filterFamily && filterFamily.value !== 'Todos') {
+        query = query.eq('familia', filterFamily.value);
+      }
+
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+      query = query.order('criado_em', { ascending: false }).range(from, to);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        toast.error('Erro ao carregar caminhões', error.message);
+      } else if (data) {
+        const mapped = data.map((item: any) => ({
+          id: item.id,
+          createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
+          family: item.familia,
+          model: item.modelo,
+          transmission: item.transmissao,
+          wheelbases: (item.caminhoes_entre_eixos || []).map((w: any) => ({
+            dimension: w.dimensao,
+            price: w.preco,
+            curbWeight: w.peso_ordem_marcha || '0',
+            technicalPbt: w.pbt_tecnico || '0',
+            homologatedPbt: w.pbt_homologado || '0',
+            homologatedPbtc: w.pbtc_homologado || '0',
+            priceValidity: w.vigencia_preco || ''
+          }))
+        }));
+        setCaminhoes(mapped);
+        setTotalCount(count || 0);
+      }
+    } catch (err) {
+      console.error('Erro inesperado ao buscar caminhões:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Debounce para busca textual
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  // Carregar caminhões quando a página ou filtro mudam
+  useEffect(() => {
+    loadCaminhoes();
+  }, [currentPage, filterFamily, debouncedSearch]);
 
   // Transição de Telas
   const handleOpenCreateForm = () => {
@@ -323,7 +245,7 @@ export function CaminhoesPage() {
   };
 
   // Salvar Caminhão
-  const handleSaveCaminhao = () => {
+  const handleSaveCaminhao = async () => {
     if (!formFamily || !formModel.trim() || !formTransmission) {
       toast.error('Ficha técnica incompleta', 'Preencha a família, modelo e transmissão do caminhão.');
       return;
@@ -334,31 +256,72 @@ export function CaminhoesPage() {
       return;
     }
 
-    if (editingCaminhao) {
-      // Editar
-      setCaminhoes(prev => prev.map(c => c.id === editingCaminhao.id ? {
-        ...c,
-        family: formFamily.value,
-        model: formModel.trim(),
-        transmission: formTransmission.value,
-        wheelbases: formWheelbases
-      } : c));
-      toast.success('Caminhão atualizado com sucesso!');
-    } else {
-      // Criar novo
-      const newCam: Caminhao = {
-        id: Math.random().toString(36).slice(2),
-        createdAt: new Date().toLocaleDateString('pt-BR'),
-        family: formFamily.value,
-        model: formModel.trim(),
-        transmission: formTransmission.value,
-        wheelbases: formWheelbases
+    setSaving(true);
+    try {
+      const dataCaminhao = {
+        familia: formFamily.value,
+        modelo: formModel.trim(),
+        transmissao: formTransmission.value
       };
-      setCaminhoes(prev => [newCam, ...prev]);
-      toast.success('Novo caminhão registrado com sucesso!');
-    }
 
-    setIsFormMode(false);
+      let caminhaoId = '';
+
+      if (editingCaminhao) {
+        caminhaoId = editingCaminhao.id;
+        // 1. Atualizar caminhão
+        const { error: camError } = await supabase
+          .from('caminhoes')
+          .update(dataCaminhao)
+          .eq('id', caminhaoId);
+
+        if (camError) throw camError;
+
+        // 2. Remover entre-eixos anteriores
+        const { error: delError } = await supabase
+          .from('caminhoes_entre_eixos')
+          .delete()
+          .eq('caminhao_id', caminhaoId);
+
+        if (delError) throw delError;
+      } else {
+        // 1. Inserir novo caminhão
+        const { data: camData, error: camError } = await supabase
+          .from('caminhoes')
+          .insert([dataCaminhao])
+          .select()
+          .single();
+
+        if (camError) throw camError;
+        caminhaoId = camData.id;
+      }
+
+      // 2. Inserir os novos entre-eixos
+      const wbRows = formWheelbases.map(wb => ({
+        caminhao_id: caminhaoId,
+        dimensao: wb.dimension,
+        preco: wb.price,
+        peso_ordem_marcha: wb.curbWeight,
+        pbt_tecnico: wb.technicalPbt,
+        pbt_homologado: wb.homologatedPbt,
+        pbtc_homologado: wb.homologatedPbtc,
+        vigencia_preco: wb.priceValidity
+      }));
+
+      const { error: wbError } = await supabase
+        .from('caminhoes_entre_eixos')
+        .insert(wbRows);
+
+      if (wbError) throw wbError;
+
+      toast.success(editingCaminhao ? 'Caminhão atualizado com sucesso!' : 'Novo caminhão registrado com sucesso!');
+      setIsFormMode(false);
+      loadCaminhoes();
+    } catch (error: any) {
+      console.error('Erro ao salvar caminhão:', error);
+      toast.error('Erro ao salvar', error.message || 'Houve um erro desconhecido.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Exclusão
@@ -367,38 +330,73 @@ export function CaminhoesPage() {
     setDeleteConfirmOpen(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!caminhaoToDelete) return;
-    setCaminhoes(prev => prev.filter(c => c.id !== caminhaoToDelete.id));
-    toast.success('Caminhão excluído', `O modelo "${caminhaoToDelete.model}" foi removido com sucesso.`);
-    setDeleteConfirmOpen(false);
-    setCaminhaoToDelete(null);
+    try {
+      const { error } = await supabase
+        .from('caminhoes')
+        .delete()
+        .eq('id', caminhaoToDelete.id);
+
+      if (error) {
+        toast.error('Erro ao excluir caminhão', error.message);
+      } else {
+        toast.success('Caminhão excluído', `O modelo "${caminhaoToDelete.model}" foi removido com sucesso.`);
+        loadCaminhoes();
+      }
+    } catch (err: any) {
+      console.error('Erro ao excluir caminhão:', err);
+      toast.error('Erro inesperado', err.message || 'Não foi possível excluir o caminhão.');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setCaminhaoToDelete(null);
+    }
   };
 
   return (
-    <DashboardLayout pageTitle="Caminhões">
+    <DashboardLayout
+      pageTitle="Caminhões"
+      pageSubtitle="Organize chassis e entre-eixos compatíveis."
+    >
       {!isFormMode ? (
         <>
-          {/* TÍTULO E AÇÕES DA PÁGINA */}
-          <div className="caminhoes-header-section">
-            <div className="caminhoes-header-title-wrapper">
-              <div className="caminhoes-title-row">
-                <h2>Gestão dos caminhões</h2>
-                <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', fontWeight: 500 }}>
-                  {filteredCaminhoes.length} caminhão(es)
-                </span>
-              </div>
-              <p className="caminhoes-desc">Organize chassis e entre-eixos compatíveis.</p>
+          {/* Barra de Filtros — Alinhada e Estilizada */}
+          <div
+            className="usuarios-filters"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--spacing-12)',
+              marginBottom: 'var(--spacing-24)',
+              flexWrap: 'wrap'
+            }}
+          >
+            <div style={{ width: 280 }}>
+              <Input
+                type="text"
+                placeholder="Buscar por modelo ou família..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                style={{ height: 38 }}
+              />
             </div>
-            <div className="caminhoes-header-actions">
-              <Button
-                variant="secondary"
-                onClick={() => setFiltersOpen(!filtersOpen)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
-              >
-                <Funnel size={16} />
-                Filtros
-              </Button>
+            <div style={{ width: 200 }}>
+              <Select
+                options={FILTER_FAMILY_OPTIONS}
+                value={filterFamily}
+                onChange={opt => {
+                  setFilterFamily(opt as OptionType);
+                  setCurrentPage(1);
+                }}
+                placeholder="Família (Todas)"
+              />
+            </div>
+            <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', marginLeft: 'var(--spacing-8)' }}>
+              {totalCount} {totalCount === 1 ? 'caminhão' : 'caminhões'}
+            </span>
+
+            {/* Botão Novo Caminhão alinhado à direita */}
+            <div style={{ marginLeft: 'auto' }}>
               <Button
                 variant="primary"
                 onClick={handleOpenCreateForm}
@@ -409,38 +407,6 @@ export function CaminhoesPage() {
               </Button>
             </div>
           </div>
-
-          {/* FILTROS COLAPSÁVEIS */}
-          {filtersOpen && (
-            <div
-              className="caminhoes-filters"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--spacing-12)',
-                marginBottom: 'var(--spacing-24)',
-                flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ width: 280 }}>
-                <Input
-                  type="text"
-                  placeholder="Buscar por modelo ou família..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  style={{ height: 38 }}
-                />
-              </div>
-              <div style={{ width: 200 }}>
-                <Select
-                  options={FILTER_FAMILY_OPTIONS}
-                  value={filterFamily}
-                  onChange={opt => setFilterFamily(opt as OptionType)}
-                  placeholder="Família (Todas)"
-                />
-              </div>
-            </div>
-          )}
 
           {/* TABELA DE LISTAGEM */}
           <div className="table-container" style={{ marginBottom: 'var(--spacing-24)' }}>
@@ -457,14 +423,20 @@ export function CaminhoesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredCaminhoes.length === 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                      Carregando caminhões...
+                    </td>
+                  </tr>
+                ) : caminhoes && caminhoes.length === 0 ? (
                   <tr>
                     <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                       Nenhum caminhão registrado.
                     </td>
                   </tr>
                 ) : (
-                  filteredCaminhoes.map(cam => (
+                  caminhoes.map(cam => (
                     <tr key={cam.id}>
                       <td>{cam.createdAt}</td>
                       <td>{cam.family}</td>
@@ -503,6 +475,15 @@ export function CaminhoesPage() {
                 )}
               </tbody>
             </table>
+            
+            {/* Paginação embutida na tabela */}
+            <Pagination
+              currentPage={currentPage}
+              totalCount={totalCount}
+              itemsPerPage={ITEMS_PER_PAGE}
+              onPageChange={setCurrentPage}
+              itemLabel="caminhões"
+            />
           </div>
         </>
       ) : (
@@ -517,7 +498,7 @@ export function CaminhoesPage() {
               <Button variant="secondary" onClick={() => setIsFormMode(false)}>
                 Cancelar
               </Button>
-              <Button variant="primary" onClick={handleSaveCaminhao}>
+              <Button variant="primary" onClick={handleSaveCaminhao} loading={saving}>
                 Salvar
               </Button>
             </div>

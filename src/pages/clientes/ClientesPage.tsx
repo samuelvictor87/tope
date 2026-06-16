@@ -1,5 +1,5 @@
 // pages/clientes/ClientesPage.tsx — Módulo de Clientes TOPE
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Plus, Pencil, Trash, Question } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -9,6 +9,8 @@ import { Drawer } from '../../components/ui/Drawer';
 import { Button } from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { Pagination } from '../../components/ui/Pagination';
+import { supabase } from '../../lib/supabase';
 import '../../styles/components/clientes.css';
 import '../../styles/components/table.css';
 
@@ -21,6 +23,7 @@ interface Cliente {
   contatoTelefone: string;
   contatoEmail: string;
   vendedor: string;
+  vendedor_id?: string;
   cep: string;
   endereco: string;
   numero: string;
@@ -29,71 +32,6 @@ interface Cliente {
   cidade: string;
   estado: string;
 }
-
-const INITIAL_CLIENTES: Cliente[] = [
-  {
-    id: '1',
-    createdAt: '16/05/2026',
-    razaoSocial: 'GRI - GERENCIAMENTO DE RESÍDUOS INDUSTRIAIS S.A.',
-    cnpj: '51.903.449/0001-09',
-    contatoNome: 'Caio Formigoni',
-    contatoTelefone: '(41) 99709-8736',
-    contatoEmail: 'cformigoni@cetrel.com.br',
-    vendedor: 'Pedro Vendedor',
-    cep: '81500-000',
-    endereco: 'Rua das Flores',
-    numero: '100',
-    complemento: 'Bloco A',
-    bairro: 'Centro',
-    cidade: 'Curitiba',
-    estado: 'PR'
-  },
-  {
-    id: '2',
-    createdAt: '28/07/2025',
-    razaoSocial: 'SUPER MENU SOLUCOES E DESENVOLVIMENTO WEB LTDA',
-    cnpj: '23.965.472/0001-84',
-    contatoNome: 'Pedro Duarte',
-    contatoTelefone: '(85) 99168-1055',
-    contatoEmail: 'pedro.duarte@camada.ai',
-    vendedor: 'Daniel Vendedor',
-    cep: '60120-020',
-    endereco: 'Av. Dom Luís',
-    numero: '500',
-    complemento: 'Sala 301',
-    bairro: 'Aldeota',
-    cidade: 'Fortaleza',
-    estado: 'CE'
-  },
-  {
-    id: '3',
-    createdAt: '25/06/2025',
-    razaoSocial: 'D&C CLIENTE',
-    cnpj: '49.517.995/0001-51',
-    contatoNome: 'Daniel Contato',
-    contatoTelefone: '(11) 91111-1111',
-    contatoEmail: 'daniel@contato.com',
-    vendedor: 'Daniel Vendedor',
-    cep: '01310-100',
-    endereco: 'Av. Paulista',
-    numero: '1000',
-    complemento: 'Apto 42',
-    bairro: 'Bela Vista',
-    cidade: 'São Paulo',
-    estado: 'SP'
-  }
-];
-
-const VENDEDOR_FILTER_OPTIONS: OptionType[] = [
-  { value: 'Todos', label: 'Vendedor (Todos)' },
-  { value: 'Pedro Vendedor', label: 'Pedro Vendedor' },
-  { value: 'Daniel Vendedor', label: 'Daniel Vendedor' }
-];
-
-const VENDEDOR_OPTIONS: OptionType[] = [
-  { value: 'Pedro Vendedor', label: 'Pedro Vendedor' },
-  { value: 'Daniel Vendedor', label: 'Daniel Vendedor' }
-];
 
 // Helper masks
 const maskCNPJ = (val: string) => {
@@ -125,13 +63,49 @@ const maskPhone = (val: string) => {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 3)} ${digits.slice(3, 7)}-${digits.slice(7)}`;
 };
 
+const validarCNPJ = (cnpj: string): boolean => {
+  const clean = cnpj.replace(/\D/g, '');
+  if (clean.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(clean)) return false;
+
+  let tamanho = clean.length - 2;
+  let numeros = clean.substring(0, tamanho);
+  const digitos = clean.substring(tamanho);
+  let soma = 0;
+  let pos = tamanho - 7;
+
+  for (let i = tamanho; i >= 1; i--) {
+    soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+    if (pos < 2) pos = 9;
+  }
+
+  let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+  if (resultado !== parseInt(digitos.charAt(0))) return false;
+
+  tamanho = tamanho + 1;
+  numeros = clean.substring(0, tamanho);
+  soma = 0;
+  pos = tamanho - 7;
+
+  for (let i = tamanho; i >= 1; i--) {
+    soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+    if (pos < 2) pos = 9;
+  }
+
+  resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+  if (resultado !== parseInt(digitos.charAt(1))) return false;
+
+  return true;
+};
+
 export function ClientesPage() {
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
-  const [clientes, setClientes] = useState<Cliente[]>(INITIAL_CLIENTES);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedVendedor, setSelectedVendedor] = useState<OptionType | null>({ value: 'Todos', label: 'Vendedor (Todos)' });
 
   // Drawer
@@ -158,25 +132,122 @@ export function ClientesPage() {
   const [formCidade, setFormCidade] = useState('');
   const [formEstado, setFormEstado] = useState('');
 
-  // Filas filtradas
-  const filteredClientes = useMemo(() => {
-    return clientes.filter(c => {
-      const text = searchTerm.toLowerCase();
-      const cleanDigits = text.replace(/\D/g, '');
-      const matchesSearch =
-        c.razaoSocial.toLowerCase().includes(text) ||
-        (cleanDigits !== '' && c.cnpj.replace(/\D/g, '').includes(cleanDigits)) ||
-        c.contatoEmail.toLowerCase().includes(text) ||
-        c.contatoNome.toLowerCase().includes(text);
+  const [buscandoCNPJ, setBuscandoCNPJ] = useState(false);
+  const isCNPJValid = useMemo(() => validarCNPJ(formCNPJ), [formCNPJ]);
 
-      const matchesVendedor =
-        !selectedVendedor ||
-        selectedVendedor.value === 'Todos' ||
-        c.vendedor === selectedVendedor.value;
+  // Estados de Carregamento e Paginação
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const ITEMS_PER_PAGE = 10;
 
-      return matchesSearch && matchesVendedor;
-    });
-  }, [clientes, searchTerm, selectedVendedor]);
+  const [vendedorOptions, setVendedorOptions] = useState<OptionType[]>([]);
+  const [vendedorFilterOptions, setVendedorFilterOptions] = useState<OptionType[]>([
+    { value: 'Todos', label: 'Vendedor (Todos)' }
+  ]);
+
+  // Carregar vendedores do banco de dados
+  useEffect(() => {
+    async function loadVendedores() {
+      try {
+        const { data, error } = await supabase
+          .from('usuarios')
+          .select('id, nome_completo')
+          .in('perfil', ['vendedor', 'administrador'])
+          .order('nome_completo');
+        
+        if (error) {
+          console.error('Erro ao buscar vendedores:', error);
+        } else if (data) {
+          const options = data.map(u => ({
+            value: u.id,
+            label: u.nome_completo
+          }));
+          setVendedorOptions(options);
+          setVendedorFilterOptions([
+            { value: 'Todos', label: 'Vendedor (Todos)' },
+            ...options
+          ]);
+        }
+      } catch (err) {
+        console.error('Erro inesperado ao buscar vendedores:', err);
+      }
+    }
+    loadVendedores();
+  }, []);
+
+  const loadClientes = async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('clientes')
+        .select(`
+          *,
+          vendedor:usuarios(id, nome_completo)
+        `, { count: 'exact' });
+
+      if (debouncedSearch.trim()) {
+        const term = `%${debouncedSearch.trim()}%`;
+        query = query.or(`razao_social.ilike.${term},cnpj.ilike.${term},contato_nome.ilike.${term},contato_email.ilike.${term}`);
+      }
+
+      if (selectedVendedor && selectedVendedor.value !== 'Todos') {
+        query = query.eq('vendedor_id', selectedVendedor.value);
+      }
+
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+      query = query.order('criado_em', { ascending: false }).range(from, to);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        toast.error('Erro ao carregar clientes', error.message);
+      } else if (data) {
+        const mapped = data.map(item => ({
+          id: item.id,
+          createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
+          razaoSocial: item.razao_social,
+          cnpj: item.cnpj,
+          contatoNome: item.contato_nome || '',
+          contatoTelefone: item.contato_telefone || '',
+          contatoEmail: item.contato_email || '',
+          vendedor: item.vendedor ? (item.vendedor as any).nome_completo : 'Sem Vendedor',
+          vendedor_id: item.vendedor_id || undefined,
+          cep: item.cep || '',
+          endereco: item.endereco || '',
+          numero: item.numero || '',
+          complemento: item.complemento || '',
+          bairro: item.bairro || '',
+          cidade: item.cidade || '',
+          estado: item.estado || ''
+        }));
+        setClientes(mapped);
+        setTotalCount(count || 0);
+      }
+    } catch (err) {
+      console.error('Erro inesperado ao buscar clientes:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Debounce da busca de texto para evitar requisições repetitivas no banco
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  // Carrega clientes quando a página, vendedor ou busca muda
+  useEffect(() => {
+    loadClientes();
+  }, [currentPage, selectedVendedor, debouncedSearch]);
+
+  const filteredClientes = clientes;
 
   // Busca CEP automático
   const handleCEPChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -204,17 +275,73 @@ export function ClientesPage() {
     }
   };
 
-  // Simulação de preenchimento CNPJ para agilizar protótipo
   const handleCNPJChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawVal = e.target.value;
     const masked = maskCNPJ(rawVal);
     setFormCNPJ(masked);
+  };
 
-    const clean = rawVal.replace(/\D/g, '');
-    if (clean.length === 14 && !formRazaoSocial) {
-      // Auto-preenche com nome simulado
-      setFormRazaoSocial('EMPRESA DE EXEMPLO ' + clean.slice(-4) + ' LTDA');
-      toast.info('Razão social simulada para o CNPJ informado!');
+  const handleBuscarCNPJ = async () => {
+    const clean = formCNPJ.replace(/\D/g, '');
+    if (!validarCNPJ(clean)) {
+      toast.error('CNPJ Inválido', 'O CNPJ informado não possui formato ou dígitos verificadores válidos.');
+      return;
+    }
+
+    setBuscandoCNPJ(true);
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`);
+      
+      if (res.status === 404) {
+        toast.error('CNPJ não encontrado', 'Este CNPJ não foi localizado na base da Receita Federal.');
+        return;
+      }
+
+      if (!res.ok) {
+        toast.error('Erro na busca', 'Ocorreu um erro ao consultar o CNPJ. Tente novamente.');
+        return;
+      }
+
+      const data = await res.json();
+      
+      if (data.razao_social) {
+        setFormRazaoSocial(data.razao_social);
+      }
+      
+      if (data.cep) {
+        setFormCEP(maskCEP(data.cep));
+      }
+      
+      if (data.logradouro) {
+        setFormEndereco(data.logradouro);
+      }
+      
+      if (data.numero) {
+        setFormNumero(data.numero);
+      }
+      
+      if (data.complemento) {
+        setFormComplemento(data.complemento);
+      }
+      
+      if (data.bairro) {
+        setFormBairro(data.bairro);
+      }
+      
+      if (data.municipio) {
+        setFormCidade(data.municipio);
+      }
+      
+      if (data.uf) {
+        setFormEstado(data.uf);
+      }
+      
+      toast.success('Cadastro e localização preenchidos com sucesso!');
+    } catch (err) {
+      console.error('Erro ao buscar CNPJ:', err);
+      toast.error('Erro de conexão', 'Não foi possível conectar ao serviço de consulta de CNPJ.');
+    } finally {
+      setBuscandoCNPJ(false);
     }
   };
 
@@ -246,7 +373,7 @@ export function ClientesPage() {
     setFormEmail(c.contatoEmail);
     setFormTelefone(c.contatoTelefone);
     
-    const matchedVendedor = VENDEDOR_OPTIONS.find(o => o.value === c.vendedor) || null;
+    const matchedVendedor = vendedorOptions.find(o => o.value === c.vendedor_id) || null;
     setFormVendedor(matchedVendedor);
 
     setFormCEP(c.cep);
@@ -260,7 +387,7 @@ export function ClientesPage() {
   };
 
   // Salvar
-  const handleSaveCliente = (e: React.FormEvent) => {
+  const handleSaveCliente = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formCNPJ || !formRazaoSocial) {
@@ -268,55 +395,56 @@ export function ClientesPage() {
       return;
     }
 
-    const seller = formVendedor?.value || 'Sem Vendedor';
-
-    if (editingCliente) {
-      setClientes(prev =>
-        prev.map(c =>
-          c.id === editingCliente.id
-            ? {
-                ...c,
-                cnpj: formCNPJ,
-                razaoSocial: formRazaoSocial,
-                contatoNome: formNome,
-                contatoEmail: formEmail,
-                contatoTelefone: formTelefone,
-                vendedor: seller,
-                cep: formCEP,
-                endereco: formEndereco,
-                numero: formNumero,
-                complemento: formComplemento,
-                bairro: formBairro,
-                cidade: formCidade,
-                estado: formEstado
-              }
-            : c
-        )
-      );
-      toast.success('Cliente atualizado com sucesso!');
-    } else {
-      const newCliente: Cliente = {
-        id: Math.random().toString(36).slice(2),
-        createdAt: new Date().toLocaleDateString('pt-BR'),
+    setSaving(true);
+    try {
+      const clientData = {
         cnpj: formCNPJ,
-        razaoSocial: formRazaoSocial,
-        contatoNome: formNome,
-        contatoEmail: formEmail,
-        contatoTelefone: formTelefone,
-        vendedor: seller,
-        cep: formCEP,
-        endereco: formEndereco,
-        numero: formNumero,
-        complemento: formComplemento,
-        bairro: formBairro,
-        cidade: formCidade,
-        estado: formEstado
+        razao_social: formRazaoSocial,
+        contato_nome: formNome || null,
+        contato_email: formEmail || null,
+        contato_telefone: formTelefone || null,
+        vendedor_id: formVendedor?.value || null,
+        cep: formCEP || null,
+        endereco: formEndereco || null,
+        numero: formNumero || null,
+        complemento: formComplemento || null,
+        bairro: formBairro || null,
+        cidade: formCidade || null,
+        estado: formEstado || null
       };
-      setClientes(prev => [newCliente, ...prev]);
-      toast.success('Novo cliente cadastrado com sucesso!');
-    }
 
-    setDrawerOpen(false);
+      if (editingCliente) {
+        const { error } = await supabase
+          .from('clientes')
+          .update(clientData)
+          .eq('id', editingCliente.id);
+
+        if (error) {
+          toast.error('Erro ao atualizar cliente', error.message);
+        } else {
+          toast.success('Cliente atualizado com sucesso!');
+          setDrawerOpen(false);
+          loadClientes();
+        }
+      } else {
+        const { error } = await supabase
+          .from('clientes')
+          .insert([clientData]);
+
+        if (error) {
+          toast.error('Erro ao cadastrar cliente', error.message);
+        } else {
+          toast.success('Novo cliente cadastrado com sucesso!');
+          setDrawerOpen(false);
+          setCurrentPage(1);
+          loadClientes();
+        }
+      }
+    } catch (err) {
+      console.error('Erro inesperado ao salvar cliente:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Excluir
@@ -325,12 +453,25 @@ export function ClientesPage() {
     setDeleteConfirmOpen(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (clienteToDelete) {
-      setClientes(prev => prev.filter(c => c.id !== clienteToDelete.id));
-      toast.success('Cliente removido com sucesso!');
-      setDeleteConfirmOpen(false);
-      setClienteToDelete(null);
+      try {
+        const { error } = await supabase
+          .from('clientes')
+          .delete()
+          .eq('id', clienteToDelete.id);
+
+        if (error) {
+          toast.error('Erro ao remover cliente', error.message);
+        } else {
+          toast.success('Cliente removido com sucesso!');
+          setDeleteConfirmOpen(false);
+          setClienteToDelete(null);
+          loadClientes();
+        }
+      } catch (err) {
+        console.error('Erro ao deletar cliente:', err);
+      }
     }
   };
 
@@ -361,9 +502,12 @@ export function ClientesPage() {
         </div>
         <div style={{ width: 180 }}>
           <Select
-            options={VENDEDOR_FILTER_OPTIONS}
+            options={vendedorFilterOptions}
             value={selectedVendedor}
-            onChange={(opt) => setSelectedVendedor(opt as OptionType)}
+            onChange={(opt) => {
+              setSelectedVendedor(opt as OptionType);
+              setCurrentPage(1);
+            }}
             placeholder="Vendedor"
           />
         </div>
@@ -397,7 +541,13 @@ export function ClientesPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredClientes.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                  Carregando clientes...
+                </td>
+              </tr>
+            ) : filteredClientes.length === 0 ? (
               <tr>
                 <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                   Nenhum cliente encontrado.
@@ -443,8 +593,17 @@ export function ClientesPage() {
               ))
             )}
           </tbody>
-        </table>
-      </div>
+            </table>
+            
+            {/* Paginação */}
+            <Pagination
+              currentPage={currentPage}
+              totalCount={totalCount}
+              itemsPerPage={ITEMS_PER_PAGE}
+              onPageChange={setCurrentPage}
+              itemLabel="clientes"
+            />
+          </div>
 
       {/* Drawer Formulário Novo/Edição de Cliente */}
       <Drawer
@@ -458,7 +617,7 @@ export function ClientesPage() {
             <Button variant="secondary" onClick={() => setDrawerOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="primary" onClick={handleSaveCliente}>
+            <Button variant="primary" onClick={handleSaveCliente} loading={saving}>
               Salvar
             </Button>
           </div>
@@ -475,13 +634,27 @@ export function ClientesPage() {
               <p className="cliente-section-desc">Informe o CNPJ para preencher a razão social</p>
             </div>
             <div className="cliente-section-fields">
-              <Input
-                label="CNPJ"
-                placeholder="00.000.000/0000-00"
-                value={formCNPJ}
-                onChange={handleCNPJChange}
-                required
-              />
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'var(--spacing-8)' }}>
+                <div style={{ flex: 1 }}>
+                  <Input
+                    label="CNPJ"
+                    placeholder="00.000.000/0000-00"
+                    value={formCNPJ}
+                    onChange={handleCNPJChange}
+                    required
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={handleBuscarCNPJ}
+                  disabled={!isCNPJValid || buscandoCNPJ}
+                  loading={buscandoCNPJ}
+                  style={{ height: 40, whiteSpace: 'nowrap' }}
+                >
+                  Buscar
+                </Button>
+              </div>
               <Input
                 label="Razão social"
                 placeholder="Ex: Minha Empresa S.A."
@@ -534,7 +707,7 @@ export function ClientesPage() {
             <div className="cliente-section-fields">
               <Select
                 label="Responsável"
-                options={VENDEDOR_OPTIONS}
+                options={vendedorOptions}
                 value={formVendedor}
                 onChange={(opt) => setFormVendedor(opt as OptionType)}
                 placeholder="Selecione o vendedor..."

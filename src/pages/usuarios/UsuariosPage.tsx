@@ -1,5 +1,5 @@
 // pages/usuarios/UsuariosPage.tsx — Módulo de Usuários TOPE
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Plus, Pencil, Trash, Camera, Question } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { useToast } from '../../components/ui/Toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { supabase } from '../../lib/supabase';
 import '../../styles/components/usuarios.css';
 import '../../styles/components/table.css';
 
@@ -23,72 +24,6 @@ interface User {
   whatsapp: string;
   avatar: string | null;
 }
-
-const INITIAL_USERS: User[] = [
-  {
-    id: '1',
-    createdAt: '16/05/2026',
-    name: 'Vitor Tosi',
-    email: 'vitortosi@dibracam.com.br',
-    profile: 'Vendedor',
-    whatsapp: '11982967908',
-    avatar: null
-  },
-  {
-    id: '2',
-    createdAt: '04/08/2025',
-    name: 'Pedro Pelosini',
-    email: 'pedro@dibracam.com.br',
-    profile: 'Administrador',
-    whatsapp: '11973959250',
-    avatar: null
-  },
-  {
-    id: '3',
-    createdAt: '04/08/2025',
-    name: 'Pedro Vendedor',
-    email: 'pedro_pelosini@icloud.com',
-    profile: 'Vendedor',
-    whatsapp: '',
-    avatar: null
-  },
-  {
-    id: '4',
-    createdAt: '26/08/2025',
-    name: 'Daniel Bau',
-    email: 'daniel@bau.com',
-    profile: 'Fornecedor',
-    whatsapp: '',
-    avatar: null
-  },
-  {
-    id: '5',
-    createdAt: '25/06/2025',
-    name: 'Daniel Vendedor',
-    email: 'daniel@vendedor.com',
-    profile: 'Vendedor',
-    whatsapp: '',
-    avatar: null
-  },
-  {
-    id: '6',
-    createdAt: '25/06/2025',
-    name: 'Camila Bau',
-    email: 'camila_iamamoto@yahoo.com',
-    profile: 'Fornecedor',
-    whatsapp: '',
-    avatar: null
-  },
-  {
-    id: '7',
-    createdAt: '25/06/2025',
-    name: 'Pedro Duarte',
-    email: 'pedro.duarte@camada.ai',
-    profile: 'Administrador',
-    whatsapp: '',
-    avatar: null
-  }
-];
 
 const PROFILE_OPTIONS: OptionType[] = [
   { value: 'Administrador', label: 'Administrador' },
@@ -104,10 +39,11 @@ const PROFILE_FILTER_OPTIONS: OptionType[] = [
 export function UsuariosPage() {
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [users, setUsers] = useState<User[]>([]);
 
   // Estados dos Filtros
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedProfile, setSelectedProfile] = useState<OptionType | null>({ value: 'Todos', label: 'Perfil (Todos)' });
 
   // Estados do Drawer
@@ -125,21 +61,62 @@ export function UsuariosPage() {
   const [formWhatsapp, setFormWhatsapp] = useState('');
   const [formAvatar, setFormAvatar] = useState<string | null>(null);
 
-  // Filtragem Dinâmica
-  const filteredUsers = useMemo(() => {
-    return users.filter(user => {
-      const matchesSearch =
-        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchTerm.toLowerCase());
+  // Estados de Carregamento e Processamento
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-      const matchesProfile =
-        !selectedProfile ||
-        selectedProfile.value === 'Todos' ||
-        user.profile === selectedProfile.value;
+  // Carregar Usuários do Supabase
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      let query = supabase.from('usuarios').select('*');
 
-      return matchesSearch && matchesProfile;
-    });
-  }, [users, searchTerm, selectedProfile]);
+      if (debouncedSearch.trim()) {
+        const term = `%${debouncedSearch.trim()}%`;
+        query = query.or(`nome_completo.ilike.${term},email.ilike.${term}`);
+      }
+
+      if (selectedProfile && selectedProfile.value !== 'Todos') {
+        query = query.eq('perfil', selectedProfile.value.toLowerCase());
+      }
+
+      const { data, error } = await query.order('criado_em', { ascending: false });
+
+      if (error) {
+        toast.error('Erro ao carregar usuários', error.message);
+      } else if (data) {
+        const mapped = data.map((item: any) => ({
+          id: item.id,
+          createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
+          name: item.nome_completo || '',
+          email: item.email || '',
+          profile: (item.perfil ? item.perfil.charAt(0).toUpperCase() + item.perfil.slice(1) : 'Vendedor') as 'Administrador' | 'Vendedor' | 'Fornecedor',
+          whatsapp: item.whatsapp || '',
+          avatar: item.avatar_url || null
+        }));
+        setUsers(mapped);
+      }
+    } catch (err) {
+      console.error('Erro inesperado ao carregar usuários:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Debounce para busca textual
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  // Carregar usuários quando filtros mudam
+  useEffect(() => {
+    loadUsers();
+  }, [selectedProfile, debouncedSearch]);
+
+  const filteredUsers = users;
 
   // Abrir Criar
   const handleOpenCreateDrawer = () => {
@@ -185,7 +162,7 @@ export function UsuariosPage() {
   };
 
   // Salvar
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formName.trim() || !formEmail.trim() || !formProfile) {
@@ -193,41 +170,51 @@ export function UsuariosPage() {
       return;
     }
 
-    const validatedProfile = formProfile.value as 'Administrador' | 'Vendedor' | 'Fornecedor';
-
-    if (editingUser) {
-      // Edição
-      setUsers(prev =>
-        prev.map(u =>
-          u.id === editingUser.id
-            ? {
-                ...u,
-                name: formName.trim(),
-                email: formEmail.trim(),
-                profile: validatedProfile,
-                whatsapp: formWhatsapp.trim(),
-                avatar: formAvatar
-              }
-            : u
-        )
-      );
-      toast.success('Usuário atualizado com sucesso!');
-    } else {
-      // Criação
-      const newUser: User = {
-        id: Math.random().toString(36).slice(2),
-        createdAt: new Date().toLocaleDateString('pt-BR'),
-        name: formName.trim(),
+    setSaving(true);
+    try {
+      const validatedProfile = (formProfile.value as string).toLowerCase();
+      const dataUser = {
+        nome_completo: formName.trim(),
         email: formEmail.trim(),
-        profile: validatedProfile,
-        whatsapp: formWhatsapp.trim(),
-        avatar: formAvatar
+        perfil: validatedProfile,
+        whatsapp: formWhatsapp.trim() || null,
+        avatar_url: formAvatar || null
       };
-      setUsers(prev => [newUser, ...prev]);
-      toast.success('Novo usuário cadastrado com sucesso!');
-    }
 
-    setDrawerOpen(false);
+      if (editingUser) {
+        // Editar
+        const { error } = await supabase
+          .from('usuarios')
+          .update(dataUser)
+          .eq('id', editingUser.id);
+
+        if (error) {
+          toast.error('Erro ao atualizar usuário', error.message);
+        } else {
+          toast.success('Usuário atualizado com sucesso!');
+          setDrawerOpen(false);
+          loadUsers();
+        }
+      } else {
+        // Criar novo
+        const { error } = await supabase
+          .from('usuarios')
+          .insert([dataUser]);
+
+        if (error) {
+          toast.error('Erro ao cadastrar usuário', error.message);
+        } else {
+          toast.success('Novo usuário cadastrado com sucesso!');
+          setDrawerOpen(false);
+          loadUsers();
+        }
+      }
+    } catch (err: any) {
+      console.error('Erro ao salvar usuário:', err);
+      toast.error('Erro inesperado', err.message || 'Erro ao processar salvamento.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Excluir
@@ -236,10 +223,24 @@ export function UsuariosPage() {
     setDeleteConfirmOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    if (userToDelete) {
-      setUsers(prev => prev.filter(u => u.id !== userToDelete.id));
-      toast.success('Usuário removido', `O usuário "${userToDelete.name}" foi excluído.`);
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    try {
+      const { error } = await supabase
+        .from('usuarios')
+        .delete()
+        .eq('id', userToDelete.id);
+
+      if (error) {
+        toast.error('Erro ao excluir usuário', error.message);
+      } else {
+        toast.success('Usuário removido', `O usuário "${userToDelete.name}" foi excluído com sucesso.`);
+        loadUsers();
+      }
+    } catch (err: any) {
+      console.error('Erro ao excluir usuário:', err);
+      toast.error('Erro inesperado', err.message || 'Não foi possível excluir o usuário.');
+    } finally {
       setDeleteConfirmOpen(false);
       setUserToDelete(null);
     }
@@ -315,7 +316,13 @@ export function UsuariosPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                  Carregando usuários...
+                </td>
+              </tr>
+            ) : filteredUsers.length === 0 ? (
               <tr>
                 <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                   Nenhum usuário encontrado.
@@ -378,7 +385,7 @@ export function UsuariosPage() {
             <Button variant="secondary" type="button" onClick={() => setDrawerOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="primary" type="button" onClick={() => formRef.current?.requestSubmit()}>
+            <Button variant="primary" type="button" onClick={() => formRef.current?.requestSubmit()} loading={saving}>
               {editingUser ? 'Salvar Alterações' : 'Criar Usuário'}
             </Button>
           </>
@@ -471,18 +478,19 @@ export function UsuariosPage() {
         </form>
       </Drawer>
 
+      {/* CONFIRMAÇÃO DE EXCLUSÃO */}
       <ConfirmModal
         isOpen={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={handleConfirmDelete}
-        title="Inativar Usuário"
+        title="Excluir Usuário"
         message={
           <>
-            Tem certeza que deseja inativar o usuário <strong>{userToDelete?.name}</strong>?
+            Tem certeza que deseja excluir o usuário <strong>{userToDelete?.name}</strong>?
           </>
         }
-        subMessage="O usuário perderá o acesso ao sistema imediatamente após a confirmação."
-        confirmLabel="Inativar"
+        subMessage="O usuário será removido permanentemente do sistema imediatamente após a confirmação."
+        confirmLabel="Excluir"
         cancelLabel="Cancelar"
       />
     </DashboardLayout>

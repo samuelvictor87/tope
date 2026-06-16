@@ -1,6 +1,6 @@
 // pages/implementos/ImplementosPage.tsx — Módulo de Implementos TOPE
-import React, { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash, Funnel } from '@phosphor-icons/react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Plus, Pencil, Trash } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
@@ -11,6 +11,8 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { useToast } from '../../components/ui/Toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { Pagination } from '../../components/ui/Pagination';
+import { supabase } from '../../lib/supabase';
 import '../../styles/components/implementos.css';
 import '../../styles/components/table.css';
 
@@ -40,38 +42,6 @@ interface OpcaoAtributo {
   wheelbases: string[]; // Entre eixos compatíveis
 }
 
-// Dados Iniciais Baseados nos Prints
-const INITIAL_CATEGORIAS: Categoria[] = [
-  { id: 'c1', createdAt: '25/08/2025', name: 'Pipa', attributes: ['Capacidade', 'Tipo de Líquido'] },
-  { id: 'c2', createdAt: '26/05/2025', name: 'Munck', attributes: ['Capacidade'] },
-  { id: 'c3', createdAt: '25/05/2025', name: 'Poliguindaste', attributes: ['Braço Articulado'] },
-  { id: 'c4', createdAt: '25/05/2025', name: 'Furgão Baú', attributes: ['Modelo', 'Tipo de Baú', 'Tamanho', 'Tipo'] }
-];
-
-const INITIAL_ATRIBUTOS: Atributo[] = [
-  { id: 'a1', createdAt: '23/11/2025', categoryName: 'Furgão Baú', name: 'Tipo', options: [] },
-  { id: 'a2', createdAt: '23/11/2025', categoryName: 'Furgão Baú', name: 'Tamanho', options: [] },
-  { id: 'a3', createdAt: '25/08/2025', categoryName: 'Pipa', name: 'Tipo de Líquido', options: ['Combustível'] },
-  { id: 'a4', createdAt: '25/08/2025', categoryName: 'Pipa', name: 'Capacidade', options: ['10000L'] },
-  { id: 'a5', createdAt: '27/05/2025', categoryName: 'Furgão Baú', name: 'Tipo de Baú', options: ['Aço'] },
-  { id: 'a6', createdAt: '26/05/2025', categoryName: 'Munck', name: 'Capacidade', options: ['30 tons', '6 tons'] },
-  { id: 'a7', createdAt: '25/05/2025', categoryName: 'Furgão Baú', name: 'Modelo', options: ['Comum 7m', 'Comum 8,5m', 'Sider 8,5m', 'Sider 7m'] },
-  { id: 'a8', createdAt: '25/05/2025', categoryName: 'Poliguindaste', name: 'Braço Articulado', options: ['Simples', 'Duplo', 'Triplo'] }
-];
-
-const INITIAL_OPCOES: OpcaoAtributo[] = [
-  { id: 'o1', createdAt: '25/08/2025', categoryName: 'Pipa', attributeName: 'Tipo de Líquido', name: 'Combustível', weight: '100', wheelbases: ['3400', '4000', '4400', '4600', '3560', '4800', '5207'] },
-  { id: 'o2', createdAt: '25/08/2025', categoryName: 'Pipa', attributeName: 'Capacidade', name: '10000L', weight: '900', wheelbases: ['3400', '4000', '4400', '4600', '3560', '4800', '5207'] },
-  { id: 'o3', createdAt: '27/05/2025', categoryName: 'Furgão Baú', attributeName: 'Tipo de Baú', name: 'Aço', weight: '0', wheelbases: ['3400', '4000', '5207'] },
-  { id: 'o4', createdAt: '26/05/2025', categoryName: 'Munck', attributeName: 'Capacidade', name: '6 tons', weight: '600', wheelbases: ['3400', '4600'] },
-  { id: 'o5', createdAt: '26/05/2025', categoryName: 'Munck', attributeName: 'Capacidade', name: '30 tons', weight: '1.000', wheelbases: ['3400', '4000', '4400', '4600', '3560', '4800', '5207'] },
-  { id: 'o6', createdAt: '25/05/2025', categoryName: 'Poliguindaste', attributeName: 'Braço Articulado', name: 'Triplo', weight: '4.200', wheelbases: ['3400', '4000', '4400', '4600', '3560', '4800', '5207'] },
-  { id: 'o7', createdAt: '25/05/2025', categoryName: 'Furgão Baú', attributeName: 'Modelo', name: 'Sider 7m', weight: '1.870', wheelbases: ['3400', '4000', '4400', '4600', '3560', '4800', '5207'] },
-  { id: 'o8', createdAt: '25/05/2025', categoryName: 'Furgão Baú', attributeName: 'Modelo', name: 'Sider 8,5m', weight: '2.700', wheelbases: ['3400', '4000', '4400', '4600', '3560', '4800', '5207'] },
-  { id: 'o9', createdAt: '25/05/2025', categoryName: 'Poliguindaste', attributeName: 'Braço Articulado', name: 'Duplo', weight: '3.800', wheelbases: ['3400', '4000', '4400', '4600', '3560', '4800', '5207'] },
-  { id: 'o10', createdAt: '25/05/2025', categoryName: 'Poliguindaste', attributeName: 'Braço Articulado', name: 'Simples', weight: '3.200', wheelbases: ['4000', '4400', '4800', '5207'] }
-];
-
 const WHEELBASE_OPTIONS = [
   { value: '3400', label: '3400' },
   { value: '3560', label: '3560' },
@@ -82,6 +52,21 @@ const WHEELBASE_OPTIONS = [
   { value: '5207', label: '5207' }
 ];
 
+const IMPLEMENTO_OPTIONS = [
+  { value: 'furgao-bau', label: 'Furgão Baú' },
+  { value: 'sider', label: 'Sider' },
+  { value: 'grade-baixa', label: 'Grade Baixa' },
+  { value: 'porta-conteiner', label: 'Porta Contêiner' },
+  { value: 'basculante', label: 'Basculante' },
+  { value: 'prancha', label: 'Prancha' },
+  { value: 'frigorifico', label: 'Frigorífico' }
+];
+
+const FILTER_IMPLEMENTO_OPTIONS: OptionType[] = [
+  { value: 'Todos', label: 'Implementos (Todos)' },
+  ...IMPLEMENTO_OPTIONS
+];
+
 export function ImplementosPage() {
   const toast = useToast();
   
@@ -90,15 +75,18 @@ export function ImplementosPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Estados dos Dados
-  const [categorias, setCategorias] = useState<Categoria[]>(INITIAL_CATEGORIAS);
-  const [atributos, setAtributos] = useState<Atributo[]>(INITIAL_ATRIBUTOS);
-  const [opcoes, setOpcoes] = useState<OpcaoAtributo[]>(INITIAL_OPCOES);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [atributos, setAtributos] = useState<Atributo[]>([]);
+  const [opcoes, setOpcoes] = useState<OpcaoAtributo[]>([]);
 
   // Estados de Filtros
   const [searchCategory, setSearchCategory] = useState('');
+  const [debouncedCategory, setDebouncedCategory] = useState('');
   const [searchAttribute, setSearchAttribute] = useState('');
+  const [debouncedAttribute, setDebouncedAttribute] = useState('');
   const [filterAttrCategory, setFilterAttrCategory] = useState<OptionType | null>({ value: 'Todos', label: 'Categoria (Todas)' });
   const [searchOption, setSearchOption] = useState('');
+  const [debouncedOption, setDebouncedOption] = useState('');
   const [filterOptCategory, setFilterOptCategory] = useState<OptionType | null>({ value: 'Todos', label: 'Categoria (Todas)' });
   const [filterOptAttribute, setFilterOptAttribute] = useState<OptionType | null>({ value: 'Todos', label: 'Atributo (Todos)' });
 
@@ -131,53 +119,235 @@ export function ImplementosPage() {
   const [formOptionWeight, setFormOptionWeight] = useState('');
   const [formOptionWheelbases, setFormOptionWheelbases] = useState<string[]>([]);
 
+  // Estados de Carregamento e Paginação
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const ITEMS_PER_PAGE = 10;
+
+  const [dbCategorias, setDbCategorias] = useState<OptionType[]>([]);
+  const [dbAtributos, setDbAtributos] = useState<OptionType[]>([]);
+
+  const loadFilterOptions = async () => {
+    try {
+      const { data: cats, error: err1 } = await supabase
+        .from('categorias')
+        .select('id, nome')
+        .order('nome');
+      
+      if (!err1 && cats) {
+        setDbCategorias(cats.map(c => ({ value: c.id, label: c.nome })));
+      }
+
+      const { data: attrs, error: err2 } = await supabase
+        .from('atributos')
+        .select('id, nome, categoria_id')
+        .order('nome');
+
+      if (!err2 && attrs) {
+        setDbAtributos(attrs.map(a => ({ value: a.id, label: a.nome, categoryId: a.categoria_id })));
+      }
+    } catch (err) {
+      console.error('Erro ao buscar opções de filtros:', err);
+    }
+  };
+
+  const loadCategorias = async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('categorias')
+        .select(`
+          *,
+          atributos:atributos(nome)
+        `, { count: 'exact' });
+
+      if (debouncedCategory.trim()) {
+        const term = `%${debouncedCategory.trim()}%`;
+        query = query.ilike('nome', term);
+      }
+
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+      query = query.order('criado_em', { ascending: false }).range(from, to);
+
+      const { data, error, count } = await query;
+      if (error) {
+        toast.error('Erro ao carregar categorias', error.message);
+      } else if (data) {
+        const mapped = data.map(item => ({
+          id: item.id,
+          createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
+          name: item.nome,
+          attributes: item.atributos ? (item.atributos as any[]).map(a => a.nome) : []
+        }));
+        setCategorias(mapped);
+        setTotalCount(count || 0);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAtributos = async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('atributos')
+        .select(`
+          *,
+          categoria:categorias(nome),
+          opcoes:opcoes_atributos(nome)
+        `, { count: 'exact' });
+
+      if (debouncedAttribute.trim()) {
+        const term = `%${debouncedAttribute.trim()}%`;
+        query = query.ilike('nome', term);
+      }
+
+      if (filterAttrCategory && filterAttrCategory.value !== 'Todos') {
+        query = query.eq('categoria_id', filterAttrCategory.value);
+      }
+
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+      query = query.order('criado_em', { ascending: false }).range(from, to);
+
+      const { data, error, count } = await query;
+      if (error) {
+        toast.error('Erro ao carregar atributos', error.message);
+      } else if (data) {
+        const mapped = data.map(item => ({
+          id: item.id,
+          createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
+          categoryName: item.categoria ? (item.categoria as any).nome : '',
+          name: item.nome,
+          options: item.opcoes ? (item.opcoes as any[]).map(o => o.nome) : []
+        }));
+        setAtributos(mapped);
+        setTotalCount(count || 0);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadOpcoes = async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('opcoes_atributos')
+        .select(`
+          *,
+          atributo:atributos(
+            nome,
+            categoria:categorias(id, nome)
+          )
+        `, { count: 'exact' });
+
+      if (debouncedOption.trim()) {
+        const term = `%${debouncedOption.trim()}%`;
+        query = query.ilike('nome', term);
+      }
+
+      if (filterOptCategory && filterOptCategory.value !== 'Todos') {
+        query = query.eq('atributo.categoria_id', filterOptCategory.value);
+      }
+
+      if (filterOptAttribute && filterOptAttribute.value !== 'Todos') {
+        query = query.eq('atributo_id', filterOptAttribute.value);
+      }
+
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+      query = query.order('criado_em', { ascending: false }).range(from, to);
+
+      const { data, error, count } = await query;
+      if (error) {
+        toast.error('Erro ao carregar opções', error.message);
+      } else if (data) {
+        const mapped = data.map(item => ({
+          id: item.id,
+          createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
+          categoryName: item.atributo?.categoria ? (item.atributo.categoria as any).nome : '',
+          attributeName: item.atributo ? (item.atributo as any).nome : '',
+          name: item.nome,
+          weight: item.peso || '0',
+          wheelbases: item.entre_eixos || []
+        }));
+        setOpcoes(mapped);
+        setTotalCount(count || 0);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Debounce para Categorias
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedCategory(searchCategory);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchCategory]);
+
+  // Debounce para Atributos
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedAttribute(searchAttribute);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchAttribute]);
+
+  // Debounce para Opções
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedOption(searchOption);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchOption]);
+
+  // Carregar dados iniciais dos filtros
+  useEffect(() => {
+    loadFilterOptions();
+  }, []);
+
+  // Carrega lista ao mudar abas ou paginação/filtros/buscas
+  useEffect(() => {
+    if (activeTab === 'categorias') {
+      loadCategorias();
+    } else if (activeTab === 'atributos') {
+      loadAtributos();
+    } else if (activeTab === 'opcoes') {
+      loadOpcoes();
+    }
+  }, [activeTab, currentPage, filterAttrCategory, filterOptCategory, filterOptAttribute, debouncedCategory, debouncedAttribute, debouncedOption]);
+
+  const filteredCategorias = categorias;
+  const filteredAtributos = atributos;
+  const filteredOpcoes = opcoes;
+
   // Opções para Selects e MultiSelects dinâmicos
   const categoryOptions: OptionType[] = useMemo(() => {
-    return categorias.map(c => ({ value: c.name, label: c.name }));
-  }, [categorias]);
+    return dbCategorias;
+  }, [dbCategorias]);
 
   const attributeOptionsForSelectedCategory: OptionType[] = useMemo(() => {
     if (!formOptionCategory) return [];
-    // Filtra atributos vinculados à categoria selecionada
-    return atributos
-      .filter(a => a.categoryName === formOptionCategory.value)
-      .map(a => ({ value: a.name, label: a.name }));
-  }, [formOptionCategory, atributos]);
-
-  // Listagens Filtradas
-  const filteredCategorias = useMemo(() => {
-    return categorias.filter(c => {
-      const term = searchCategory.toLowerCase();
-      return c.name.toLowerCase().includes(term) ||
-             c.attributes.some(a => a.toLowerCase().includes(term));
-    });
-  }, [categorias, searchCategory]);
-
-  const filteredAtributos = useMemo(() => {
-    return atributos.filter(a => {
-      const matchesSearch = a.name.toLowerCase().includes(searchAttribute.toLowerCase()) ||
-                            a.categoryName.toLowerCase().includes(searchAttribute.toLowerCase());
-      const matchesCategory = !filterAttrCategory || 
-                              filterAttrCategory.value === 'Todos' || 
-                              a.categoryName === filterAttrCategory.value;
-      return matchesSearch && matchesCategory;
-    });
-  }, [atributos, searchAttribute, filterAttrCategory]);
-
-  const filteredOpcoes = useMemo(() => {
-    return opcoes.filter(o => {
-      const matchesSearch = o.name.toLowerCase().includes(searchOption.toLowerCase()) ||
-                            o.categoryName.toLowerCase().includes(searchOption.toLowerCase()) ||
-                            o.attributeName.toLowerCase().includes(searchOption.toLowerCase());
-      const matchesCategory = !filterOptCategory ||
-                              filterOptCategory.value === 'Todos' ||
-                              o.categoryName === filterOptCategory.value;
-      const matchesAttribute = !filterOptAttribute ||
-                               filterOptAttribute.value === 'Todos' ||
-                               o.attributeName === filterOptAttribute.value;
-      return matchesSearch && matchesCategory && matchesAttribute;
-    });
-  }, [opcoes, searchOption, filterOptCategory, filterOptAttribute]);
+    return dbAtributos
+      .filter((a: any) => a.categoryId === formOptionCategory.value)
+      .map(a => ({ value: a.value, label: a.label }));
+  }, [formOptionCategory, dbAtributos]);
 
   // Handlers Categoria (Criar/Editar/Salvar/Excluir)
   const handleOpenCreateCategory = () => {
@@ -194,33 +364,61 @@ export function ImplementosPage() {
     setDrawerCategoryOpen(true);
   };
 
-  const handleSaveCategory = (e: React.FormEvent) => {
+  const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formCategoryName.trim()) {
       toast.error('Campos obrigatórios', 'Por favor, preencha o nome da categoria.');
       return;
     }
 
-    if (editingCategory) {
-      // Atualiza categoria
-      setCategorias(prev => prev.map(c => c.id === editingCategory.id ? { ...c, name: formCategoryName.trim(), attributes: formCategoryAttributes } : c));
-      // Atualiza também nos atributos se o nome mudou
-      if (editingCategory.name !== formCategoryName.trim()) {
-        setAtributos(prev => prev.map(a => a.categoryName === editingCategory.name ? { ...a, categoryName: formCategoryName.trim() } : a));
-        setOpcoes(prev => prev.map(o => o.categoryName === editingCategory.name ? { ...o, categoryName: formCategoryName.trim() } : o));
+    setSaving(true);
+    try {
+      let catId = editingCategory?.id;
+      if (editingCategory) {
+        const { error } = await supabase
+          .from('categorias')
+          .update({ nome: formCategoryName.trim() })
+          .eq('id', editingCategory.id);
+        if (error) {
+          toast.error('Erro ao atualizar categoria', error.message);
+          return;
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('categorias')
+          .insert({ nome: formCategoryName.trim() })
+          .select()
+          .single();
+        if (error) {
+          toast.error('Erro ao criar categoria', error.message);
+          return;
+        }
+        catId = data.id;
       }
-      toast.success('Categoria atualizada com sucesso!');
-    } else {
-      const newCat: Categoria = {
-        id: Math.random().toString(36).slice(2),
-        createdAt: new Date().toLocaleDateString('pt-BR'),
-        name: formCategoryName.trim(),
-        attributes: formCategoryAttributes
-      };
-      setCategorias(prev => [newCat, ...prev]);
-      toast.success('Nova categoria criada com sucesso!');
+
+      if (catId) {
+        await supabase
+          .from('atributos')
+          .update({ categoria_id: null })
+          .eq('categoria_id', catId);
+
+        if (formCategoryAttributes.length > 0) {
+          await supabase
+            .from('atributos')
+            .update({ categoria_id: catId })
+            .in('nome', formCategoryAttributes);
+        }
+      }
+
+      toast.success(editingCategory ? 'Categoria atualizada com sucesso!' : 'Nova categoria criada com sucesso!');
+      setDrawerCategoryOpen(false);
+      loadCategorias();
+      loadFilterOptions();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
     }
-    setDrawerCategoryOpen(false);
   };
 
   // Handlers Atributo (Criar/Editar/Salvar/Excluir)
@@ -233,41 +431,58 @@ export function ImplementosPage() {
 
   const handleOpenEditAttribute = (a: Atributo) => {
     setEditingAttribute(a);
-    setFormAttributeCategory({ value: a.categoryName, label: a.categoryName });
+    const catOpt = dbCategorias.find(o => o.label === a.categoryName) || null;
+    setFormAttributeCategory(catOpt);
     setFormAttributeName(a.name);
     setDrawerAttributeOpen(true);
   };
 
-  const handleSaveAttribute = (e: React.FormEvent) => {
+  const handleSaveAttribute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formAttributeCategory || !formAttributeName.trim()) {
       toast.error('Campos obrigatórios', 'Por favor, selecione a categoria e o nome do atributo.');
       return;
     }
 
-    if (editingAttribute) {
-      setAtributos(prev => prev.map(a => a.id === editingAttribute.id ? { ...a, categoryName: formAttributeCategory.value, name: formAttributeName.trim() } : a));
-      // Atualiza também nas opções se o nome do atributo ou categoria mudou
-      if (editingAttribute.name !== formAttributeName.trim() || editingAttribute.categoryName !== formAttributeCategory.value) {
-        setOpcoes(prev => prev.map(o => o.attributeName === editingAttribute.name && o.categoryName === editingAttribute.categoryName ? { ...o, categoryName: formAttributeCategory.value, attributeName: formAttributeName.trim() } : o));
-      }
-      toast.success('Atributo atualizado com sucesso!');
-    } else {
-      const newAttr: Atributo = {
-        id: Math.random().toString(36).slice(2),
-        createdAt: new Date().toLocaleDateString('pt-BR'),
-        categoryName: formAttributeCategory.value,
-        name: formAttributeName.trim(),
-        options: []
+    setSaving(true);
+    try {
+      const attributeData = {
+        categoria_id: formAttributeCategory.value,
+        nome: formAttributeName.trim()
       };
-      setAtributos(prev => [newAttr, ...prev]);
 
-      // Atualiza os atributos vinculados na categoria correspondente
-      setCategorias(prev => prev.map(c => c.name === formAttributeCategory.value ? { ...c, attributes: [...c.attributes, formAttributeName.trim()] } : c));
-
-      toast.success('Novo atributo criado com sucesso!');
+      if (editingAttribute) {
+        const { error } = await supabase
+          .from('atributos')
+          .update(attributeData)
+          .eq('id', editingAttribute.id);
+        if (error) {
+          toast.error('Erro ao atualizar atributo', error.message);
+        } else {
+          toast.success('Atributo atualizado com sucesso!');
+          setDrawerAttributeOpen(false);
+          loadAtributos();
+          loadFilterOptions();
+        }
+      } else {
+        const { error } = await supabase
+          .from('atributos')
+          .insert(attributeData);
+        if (error) {
+          toast.error('Erro ao criar atributo', error.message);
+        } else {
+          toast.success('Novo atributo criado com sucesso!');
+          setDrawerAttributeOpen(false);
+          setCurrentPage(1);
+          loadAtributos();
+          loadFilterOptions();
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
     }
-    setDrawerAttributeOpen(false);
   };
 
   // Handlers Opção (Criar/Editar/Salvar/Excluir)
@@ -283,49 +498,64 @@ export function ImplementosPage() {
 
   const handleOpenEditOption = (o: OpcaoAtributo) => {
     setEditingOption(o);
-    setFormOptionCategory({ value: o.categoryName, label: o.categoryName });
-    setFormOptionAttribute({ value: o.attributeName, label: o.attributeName });
+    const catOpt = dbCategorias.find(opt => opt.label === o.categoryName) || null;
+    setFormOptionCategory(catOpt);
+    const attrOpt = dbAtributos.find(opt => opt.label === o.attributeName && opt.categoryId === catOpt?.value) || null;
+    setFormOptionAttribute(attrOpt);
     setFormOptionName(o.name);
     setFormOptionWeight(o.weight);
     setFormOptionWheelbases(o.wheelbases);
     setDrawerOptionOpen(true);
   };
 
-  const handleSaveOption = (e: React.FormEvent) => {
+  const handleSaveOption = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formOptionCategory || !formOptionAttribute || !formOptionName.trim()) {
       toast.error('Campos obrigatórios', 'Por favor, selecione a categoria, o atributo e o nome da opção.');
       return;
     }
 
-    if (editingOption) {
-      setOpcoes(prev => prev.map(o => o.id === editingOption.id ? {
-        ...o,
-        categoryName: formOptionCategory.value,
-        attributeName: formOptionAttribute.value,
-        name: formOptionName.trim(),
-        weight: formOptionWeight.trim(),
-        wheelbases: formOptionWheelbases
-      } : o));
-      toast.success('Opção atualizada com sucesso!');
-    } else {
-      const newOpt: OpcaoAtributo = {
-        id: Math.random().toString(36).slice(2),
-        createdAt: new Date().toLocaleDateString('pt-BR'),
-        categoryName: formOptionCategory.value,
-        attributeName: formOptionAttribute.value,
-        name: formOptionName.trim(),
-        weight: formOptionWeight.trim() || '0',
-        wheelbases: formOptionWheelbases
+    setSaving(true);
+    try {
+      const optionData = {
+        atributo_id: formOptionAttribute.value,
+        nome: formOptionName.trim(),
+        peso: formOptionWeight.trim() || '0',
+        entre_eixos: formOptionWheelbases
       };
-      setOpcoes(prev => [newOpt, ...prev]);
 
-      // Adiciona o nome da opção na lista de opções do atributo correspondente
-      setAtributos(prev => prev.map(a => a.categoryName === formOptionCategory.value && a.name === formOptionAttribute.value ? { ...a, options: [...a.options, formOptionName.trim()] } : a));
-
-      toast.success('Nova opção criada com sucesso!');
+      if (editingOption) {
+        const { error } = await supabase
+          .from('opcoes_atributos')
+          .update(optionData)
+          .eq('id', editingOption.id);
+        if (error) {
+          toast.error('Erro ao atualizar opção', error.message);
+        } else {
+          toast.success('Opção atualizada com sucesso!');
+          setDrawerOptionOpen(false);
+          loadOpcoes();
+          loadFilterOptions();
+        }
+      } else {
+        const { error } = await supabase
+          .from('opcoes_atributos')
+          .insert(optionData);
+        if (error) {
+          toast.error('Erro ao criar opção', error.message);
+        } else {
+          toast.success('Nova opção criada com sucesso!');
+          setDrawerOptionOpen(false);
+          setCurrentPage(1);
+          loadOpcoes();
+          loadFilterOptions();
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
     }
-    setDrawerOptionOpen(false);
   };
 
   // Exclusão Unificada
@@ -334,91 +564,69 @@ export function ImplementosPage() {
     setDeleteConfirmOpen(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
 
-    if (deleteTarget.type === 'categoria') {
-      setCategorias(prev => prev.filter(c => c.id !== deleteTarget.id));
-      toast.success('Categoria excluída com sucesso!');
-    } else if (deleteTarget.type === 'atributo') {
-      setAtributos(prev => prev.filter(a => a.id !== deleteTarget.id));
-      toast.success('Atributo excluído com sucesso!');
-    } else if (deleteTarget.type === 'opcao') {
-      setOpcoes(prev => prev.filter(o => o.id !== deleteTarget.id));
-      toast.success('Opção excluída com sucesso!');
+    try {
+      if (deleteTarget.type === 'categoria') {
+        const { error } = await supabase
+          .from('categorias')
+          .delete()
+          .eq('id', deleteTarget.id);
+        if (error) {
+          toast.error('Erro ao excluir categoria', error.message);
+        } else {
+          toast.success('Categoria excluída com sucesso!');
+          loadCategorias();
+          loadFilterOptions();
+        }
+      } else if (deleteTarget.type === 'atributo') {
+        const { error } = await supabase
+          .from('atributos')
+          .delete()
+          .eq('id', deleteTarget.id);
+        if (error) {
+          toast.error('Erro ao excluir atributo', error.message);
+        } else {
+          toast.success('Atributo excluído com sucesso!');
+          loadAtributos();
+          loadFilterOptions();
+        }
+      } else if (deleteTarget.type === 'opcao') {
+        const { error } = await supabase
+          .from('opcoes_atributos')
+          .delete()
+          .eq('id', deleteTarget.id);
+        if (error) {
+          toast.error('Erro ao excluir opção', error.message);
+        } else {
+          toast.success('Opção excluída com sucesso!');
+          loadOpcoes();
+          loadFilterOptions();
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeleteConfirmOpen(false);
+      setDeleteTarget(null);
     }
-
-    setDeleteConfirmOpen(false);
-    setDeleteTarget(null);
   };
 
   return (
-    <DashboardLayout pageTitle="Implementos">
-      
-      {/* Título e Ações */}
-      <div className="implementos-header-section">
-        <div className="implementos-header-title-wrapper">
-          <div className="implementos-title-row">
-            <h2>Gestão dos implementos</h2>
-            <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', fontWeight: 500 }}>
-              {activeTab === 'categorias' && `${filteredCategorias.length} categoria(s)`}
-              {activeTab === 'atributos' && `${filteredAtributos.length} atributo(s)`}
-              {activeTab === 'opcoes' && `${filteredOpcoes.length} opção(ões)`}
-            </span>
-          </div>
-          <p className="implementos-desc">Organize implementos e entre-eixos compatíveis.</p>
-        </div>
-        <div className="implementos-header-actions">
-          <Button
-            variant="secondary"
-            onClick={() => setFiltersOpen(!filtersOpen)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
-          >
-            <Funnel size={16} />
-            Filtros
-          </Button>
-          {activeTab === 'categorias' && (
-            <Button
-              variant="primary"
-              onClick={handleOpenCreateCategory}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
-            >
-              <Plus size={16} weight="bold" />
-              Nova categoria
-            </Button>
-          )}
-          {activeTab === 'atributos' && (
-            <Button
-              variant="primary"
-              onClick={handleOpenCreateAttribute}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
-            >
-              <Plus size={16} weight="bold" />
-              Novo atributo
-            </Button>
-          )}
-          {activeTab === 'opcoes' && (
-            <Button
-              variant="primary"
-              onClick={handleOpenCreateOption}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
-            >
-              <Plus size={16} weight="bold" />
-              Nova opção
-            </Button>
-          )}
-        </div>
-      </div>
-
+    <DashboardLayout
+      pageTitle="Implementos"
+      pageSubtitle="Organize implementos e entre-eixos compatíveis."
+    >
       {/* Abas */}
-      <div className="implementos-tabs-container">
+      <div className="implementos-tabs-container" style={{ marginBottom: 'var(--spacing-24)' }}>
         <div className="implementos-tabs">
           <button
             type="button"
             className={`implementos-tab-btn ${activeTab === 'categorias' ? 'active' : ''}`}
             onClick={() => {
               setActiveTab('categorias');
-              setFiltersOpen(false);
+              setCurrentPage(1);
             }}
           >
             Categorias
@@ -428,7 +636,7 @@ export function ImplementosPage() {
             className={`implementos-tab-btn ${activeTab === 'atributos' ? 'active' : ''}`}
             onClick={() => {
               setActiveTab('atributos');
-              setFiltersOpen(false);
+              setCurrentPage(1);
             }}
           >
             Atributos
@@ -438,7 +646,7 @@ export function ImplementosPage() {
             className={`implementos-tab-btn ${activeTab === 'opcoes' ? 'active' : ''}`}
             onClick={() => {
               setActiveTab('opcoes');
-              setFiltersOpen(false);
+              setCurrentPage(1);
             }}
           >
             Opções de atributos
@@ -446,19 +654,19 @@ export function ImplementosPage() {
         </div>
       </div>
 
-      {/* Barra de Filtros Colapsável */}
-      {filtersOpen && (
-        <div
-          className="implementos-filters"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--spacing-12)',
-            marginBottom: 'var(--spacing-24)',
-            flexWrap: 'wrap',
-          }}
-        >
-          {activeTab === 'categorias' && (
+      {/* Barra de Filtros e Ações — Alinhada e Estilizada */}
+      <div
+        className="implementos-filters"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--spacing-12)',
+          marginBottom: 'var(--spacing-24)',
+          flexWrap: 'wrap',
+        }}
+      >
+        {activeTab === 'categorias' && (
+          <>
             <div style={{ width: 280 }}>
               <Input
                 type="text"
@@ -468,69 +676,115 @@ export function ImplementosPage() {
                 style={{ height: 38 }}
               />
             </div>
-          )}
+            <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', marginLeft: 'var(--spacing-8)' }}>
+              {totalCount} {totalCount === 1 ? 'categoria' : 'categorias'}
+            </span>
+            <div style={{ marginLeft: 'auto' }}>
+              <Button
+                variant="primary"
+                onClick={handleOpenCreateCategory}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
+              >
+                <Plus size={16} weight="bold" />
+                Nova categoria
+              </Button>
+            </div>
+          </>
+        )}
 
-          {activeTab === 'atributos' && (
-            <>
-              <div style={{ width: 280 }}>
-                <Input
-                  type="text"
-                  placeholder="Buscar por atributo..."
-                  value={searchAttribute}
-                  onChange={e => setSearchAttribute(e.target.value)}
-                  style={{ height: 38 }}
-                />
-              </div>
-              <div style={{ width: 220 }}>
-                <Select
-                  options={[{ value: 'Todos', label: 'Categoria (Todas)' }, ...categoryOptions]}
-                  value={filterAttrCategory}
-                  onChange={(opt) => setFilterAttrCategory(opt as OptionType)}
-                  placeholder="Categoria (Todas)"
-                />
-              </div>
-            </>
-          )}
+        {activeTab === 'atributos' && (
+          <>
+            <div style={{ width: 280 }}>
+              <Input
+                type="text"
+                placeholder="Buscar por atributo..."
+                value={searchAttribute}
+                onChange={e => setSearchAttribute(e.target.value)}
+                style={{ height: 38 }}
+              />
+            </div>
+            <div style={{ width: 200 }}>
+              <Select
+                options={[{ value: 'Todos', label: 'Categoria (Todas)' }, ...categoryOptions]}
+                value={filterAttrCategory}
+                onChange={(opt) => {
+                  setFilterAttrCategory(opt as OptionType);
+                  setCurrentPage(1);
+                }}
+                placeholder="Categoria (Todas)"
+              />
+            </div>
+            <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', marginLeft: 'var(--spacing-8)' }}>
+              {totalCount} {totalCount === 1 ? 'atributo' : 'atributos'}
+            </span>
+            <div style={{ marginLeft: 'auto' }}>
+              <Button
+                variant="primary"
+                onClick={handleOpenCreateAttribute}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
+              >
+                <Plus size={16} weight="bold" />
+                Novo atributo
+              </Button>
+            </div>
+          </>
+        )}
 
-          {activeTab === 'opcoes' && (
-            <>
-              <div style={{ width: 260 }}>
-                <Input
-                  type="text"
-                  placeholder="Buscar por opção..."
-                  value={searchOption}
-                  onChange={e => setSearchOption(e.target.value)}
-                  style={{ height: 38 }}
-                />
-              </div>
-              <div style={{ width: 200 }}>
-                <Select
-                  options={[{ value: 'Todos', label: 'Categoria (Todas)' }, ...categoryOptions]}
-                  value={filterOptCategory}
-                  onChange={(opt) => {
-                    setFilterOptCategory(opt as OptionType);
-                    setFilterOptAttribute({ value: 'Todos', label: 'Atributo (Todos)' });
-                  }}
-                  placeholder="Categoria (Todas)"
-                />
-              </div>
-              <div style={{ width: 200 }}>
-                <Select
-                  options={[
-                    { value: 'Todos', label: 'Atributo (Todos)' },
-                    ...atributos
-                      .filter(a => !filterOptCategory || filterOptCategory.value === 'Todos' || a.categoryName === filterOptCategory.value)
-                      .map(a => ({ value: a.name, label: a.name }))
-                  ]}
-                  value={filterOptAttribute}
-                  onChange={(opt) => setFilterOptAttribute(opt as OptionType)}
-                  placeholder="Atributo (Todos)"
-                />
-              </div>
-            </>
-          )}
-        </div>
-      )}
+        {activeTab === 'opcoes' && (
+          <>
+            <div style={{ width: 260 }}>
+              <Input
+                type="text"
+                placeholder="Buscar por opção..."
+                value={searchOption}
+                onChange={e => setSearchOption(e.target.value)}
+                style={{ height: 38 }}
+              />
+            </div>
+            <div style={{ width: 180 }}>
+              <Select
+                options={[{ value: 'Todos', label: 'Categoria (Todas)' }, ...categoryOptions]}
+                value={filterOptCategory}
+                onChange={(opt) => {
+                  setFilterOptCategory(opt as OptionType);
+                  setFilterOptAttribute({ value: 'Todos', label: 'Atributo (Todos)' });
+                  setCurrentPage(1);
+                }}
+                placeholder="Categoria (Todas)"
+              />
+            </div>
+            <div style={{ width: 180 }}>
+              <Select
+                options={[
+                  { value: 'Todos', label: 'Atributo (Todos)' },
+                  ...dbAtributos
+                    .filter((a: any) => !filterOptCategory || filterOptCategory.value === 'Todos' || a.categoryId === filterOptCategory.value)
+                    .map(a => ({ value: a.value, label: a.label }))
+                ]}
+                value={filterOptAttribute}
+                onChange={(opt) => {
+                  setFilterOptAttribute(opt as OptionType);
+                  setCurrentPage(1);
+                }}
+                placeholder="Atributo (Todos)"
+              />
+            </div>
+            <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', marginLeft: 'var(--spacing-8)' }}>
+              {totalCount} {totalCount === 1 ? 'opção' : 'opções'}
+            </span>
+            <div style={{ marginLeft: 'auto' }}>
+              <Button
+                variant="primary"
+                onClick={handleOpenCreateOption}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
+              >
+                <Plus size={16} weight="bold" />
+                Nova opção
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Tabelas de Listagem */}
       <div className="table-container" style={{ marginBottom: 'var(--spacing-24)' }}>
@@ -547,7 +801,13 @@ export function ImplementosPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredCategorias.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                    Carregando categorias...
+                  </td>
+                </tr>
+              ) : filteredCategorias.length === 0 ? (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                     Nenhuma categoria encontrada.
@@ -597,7 +857,13 @@ export function ImplementosPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredAtributos.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                    Carregando atributos...
+                  </td>
+                </tr>
+              ) : filteredAtributos.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                     Nenhum atributo encontrado.
@@ -662,7 +928,13 @@ export function ImplementosPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredOpcoes.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                    Carregando opções...
+                  </td>
+                </tr>
+              ) : filteredOpcoes.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                     Nenhuma opção encontrada.
@@ -709,7 +981,16 @@ export function ImplementosPage() {
             </tbody>
           </table>
         )}
-      </div>
+          
+          {/* Paginação */}
+          <Pagination
+            currentPage={currentPage}
+            totalCount={totalCount}
+            itemsPerPage={ITEMS_PER_PAGE}
+            onPageChange={setCurrentPage}
+            itemLabel={activeTab === 'categorias' ? 'categorias' : activeTab === 'atributos' ? 'atributos' : 'opções'}
+          />
+        </div>
 
       {/* Drawer Categoria */}
       <Drawer
@@ -723,7 +1004,7 @@ export function ImplementosPage() {
             <Button variant="secondary" onClick={() => setDrawerCategoryOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="primary" onClick={handleSaveCategory}>
+            <Button variant="primary" onClick={handleSaveCategory} loading={saving}>
               Salvar
             </Button>
           </div>
@@ -767,7 +1048,7 @@ export function ImplementosPage() {
             <Button variant="secondary" onClick={() => setDrawerAttributeOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="primary" onClick={handleSaveAttribute}>
+            <Button variant="primary" onClick={handleSaveAttribute} loading={saving}>
               Salvar
             </Button>
           </div>
@@ -811,7 +1092,7 @@ export function ImplementosPage() {
             <Button variant="secondary" onClick={() => setDrawerOptionOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="primary" onClick={handleSaveOption}>
+            <Button variant="primary" onClick={handleSaveOption} loading={saving}>
               Salvar
             </Button>
           </div>

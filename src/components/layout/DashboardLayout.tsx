@@ -9,6 +9,7 @@ import {
   Gear,
   SignOut
 } from '@phosphor-icons/react';
+import { useAuth } from '../../contexts/AuthContext';
 import logoTope from '../../assets/logo-tope.png';
 import '../../styles/components/sidebar.css';
 import '../../styles/components/header.css';
@@ -28,19 +29,32 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, profile, signOut } = useAuth();
 
   const menuItems = [
-    { path: '/usuarios', label: 'Usuários', icon: <User size={20} /> },
-    { path: '/caminhoes', label: 'Caminhões', icon: <Truck size={20} /> },
-    { path: '/implementos', label: 'Implementos', icon: <Wrench size={20} /> },
-    { path: '/fornecedores', label: 'Fornecedores', icon: <UsersThree size={20} /> },
-    { path: '/clientes', label: 'Clientes', icon: <Users size={20} /> },
-    { path: '/meus-dados', label: 'Meus dados', icon: <Gear size={20} /> },
+    { path: '/painel/caminhoes', label: 'Caminhões', icon: <Truck size={20} /> },
+    { path: '/painel/implementos', label: 'Implementos', icon: <Wrench size={20} /> },
+    { path: '/painel/fornecedores', label: 'Fornecedores', icon: <UsersThree size={20} /> },
+    { path: '/painel/clientes', label: 'Clientes', icon: <Users size={20} /> },
+    { path: '/painel/usuarios', label: 'Usuários', icon: <User size={20} /> },
+    { path: '/painel/meus-dados', label: 'Meus dados', icon: <Gear size={20} /> },
   ];
 
-  const handleLogout = () => {
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('Error logging out:', err);
+    } finally {
+      navigate('/login');
+    }
   };
+
+  const displayName = profile?.nome_completo || user?.email?.split('@')[0] || 'Usuário';
+  const displayRole = profile?.perfil
+    ? profile.perfil.charAt(0).toUpperCase() + profile.perfil.slice(1)
+    : 'Usuário';
+  const avatarLetter = displayName.charAt(0).toUpperCase();
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--color-bg-base)' }}>
@@ -66,13 +80,19 @@ export function DashboardLayout({
           })}
         </nav>
 
-        {/* Rodapé da Sidebar com Usuário */}
+        {/* Rodapé da Sidebar com Usuário Dinâmico */}
         <div className="sidebar-footer">
           <div className="sidebar-user">
-            <div className="sidebar-avatar">P</div>
+            <div className="sidebar-avatar" style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                avatarLetter
+              )}
+            </div>
             <div className="sidebar-user-info">
-              <div className="sidebar-user-name">Pedro</div>
-              <div className="sidebar-user-role">Administrador</div>
+              <div className="sidebar-user-name" title={displayName}>{displayName}</div>
+              <div className="sidebar-user-role">{displayRole}</div>
             </div>
             <button
               onClick={handleLogout}

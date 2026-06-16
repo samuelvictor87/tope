@@ -1,6 +1,6 @@
 // pages/fornecedores/FornecedoresPage.tsx — Módulo de Fornecedores TOPE
-import React, { useState, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash, Question, Funnel } from '@phosphor-icons/react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Plus, Pencil, Trash, Question } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
@@ -11,6 +11,8 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { useToast } from '../../components/ui/Toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { Pagination } from '../../components/ui/Pagination';
+import { supabase } from '../../lib/supabase';
 import '../../styles/components/fornecedores.css';
 import '../../styles/components/table.css';
 
@@ -34,49 +36,6 @@ interface Fornecedor {
   cidade: string;
   estado: string;
 }
-
-const INITIAL_FORNECEDORES: Fornecedor[] = [
-  {
-    id: '1',
-    createdAt: '26/06/2025',
-    razaoSocial: 'OUTRO FORNECEDOR BAU',
-    cnpj: '11.111.111/1111-11',
-    usuarioNome: 'Daniel Bau',
-    usuarioWhatsapp: '(11) 9 9744-4041',
-    usuarioEmail: 'daniel@bau.com',
-    contatoNome: 'Daniel Contato',
-    contatoEmail: 'daniel@contato.com',
-    contatoTelefone: '(11) 1 1111-1111',
-    implementos: ['furgao-bau'],
-    cep: '01310-100',
-    endereco: 'Av. Paulista',
-    numero: '1000',
-    complemento: 'Apto 42',
-    bairro: 'Bela Vista',
-    cidade: 'São Paulo',
-    estado: 'SP'
-  },
-  {
-    id: '2',
-    createdAt: '25/08/2025',
-    razaoSocial: 'D&C BAUS',
-    cnpj: '49.517.995/0001-51',
-    usuarioNome: 'Camila Bau',
-    usuarioWhatsapp: '(11) 9 8687-6831',
-    usuarioEmail: 'camila_yamamoto@yahoo.com',
-    contatoNome: 'Camila Contato',
-    contatoEmail: 'dkmoriya.dm@gmail.com',
-    contatoTelefone: '(22) 2 2222-2222',
-    implementos: ['furgao-bau'],
-    cep: '01310-100',
-    endereco: 'Av. Paulista',
-    numero: '2000',
-    complemento: 'Sala 15',
-    bairro: 'Bela Vista',
-    cidade: 'São Paulo',
-    estado: 'SP'
-  }
-];
 
 const IMPLEMENTO_OPTIONS = [
   { value: 'furgao-bau', label: 'Furgão Baú' },
@@ -126,12 +85,12 @@ const maskPhone = (val: string) => {
 export function FornecedoresPage() {
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
-  const [fornecedores, setFornecedores] = useState<Fornecedor[]>(INITIAL_FORNECEDORES);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterImplemento, setFilterImplemento] = useState<OptionType | null>({ value: 'Todos', label: 'Implementos (Todos)' });
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -163,27 +122,83 @@ export function FornecedoresPage() {
   const [formCidade, setFormCidade] = useState('');
   const [formEstado, setFormEstado] = useState('');
 
-  // Lista Filtrada
-  const filteredFornecedores = useMemo(() => {
-    return fornecedores.filter(f => {
-      const text = searchTerm.toLowerCase();
-      const cleanDigits = text.replace(/\D/g, '');
-      const matchesSearch =
-        f.razaoSocial.toLowerCase().includes(text) ||
-        (cleanDigits !== '' && f.cnpj.replace(/\D/g, '').includes(cleanDigits)) ||
-        f.usuarioNome.toLowerCase().includes(text) ||
-        f.usuarioEmail.toLowerCase().includes(text) ||
-        f.contatoNome.toLowerCase().includes(text) ||
-        f.contatoEmail.toLowerCase().includes(text);
+  // Estados de Carregamento e Paginação
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const ITEMS_PER_PAGE = 10;
 
-      const matchesImplemento =
-        !filterImplemento ||
-        filterImplemento.value === 'Todos' ||
-        f.implementos.includes(filterImplemento.value);
+  const loadFornecedores = async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('fornecedores')
+        .select('*', { count: 'exact' });
 
-      return matchesSearch && matchesImplemento;
-    });
-  }, [fornecedores, searchTerm, filterImplemento]);
+      if (debouncedSearch.trim()) {
+        const term = `%${debouncedSearch.trim()}%`;
+        query = query.or(`razao_social.ilike.${term},cnpj.ilike.${term},usuario_nome.ilike.${term},usuario_email.ilike.${term},contato_nome.ilike.${term},contato_email.ilike.${term}`);
+      }
+
+      if (filterImplemento && filterImplemento.value !== 'Todos') {
+        query = query.contains('implementos', [filterImplemento.value]);
+      }
+
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+      query = query.order('criado_em', { ascending: false }).range(from, to);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        toast.error('Erro ao carregar fornecedores', error.message);
+      } else if (data) {
+        const mapped = data.map(item => ({
+          id: item.id,
+          createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
+          razaoSocial: item.razao_social,
+          cnpj: item.cnpj,
+          usuarioNome: item.usuario_nome || '',
+          usuarioWhatsapp: item.usuario_whatsapp || '',
+          usuarioEmail: item.usuario_email || '',
+          contatoNome: item.contato_nome || '',
+          contatoEmail: item.contato_email || '',
+          contatoTelefone: item.contato_telefone || '',
+          implementos: item.implementos || [],
+          cep: item.cep || '',
+          endereco: item.endereco || '',
+          numero: item.numero || '',
+          complemento: item.complemento || '',
+          bairro: item.bairro || '',
+          cidade: item.cidade || '',
+          estado: item.estado || ''
+        }));
+        setFornecedores(mapped);
+        setTotalCount(count || 0);
+      }
+    } catch (err) {
+      console.error('Erro inesperado ao buscar fornecedores:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Debounce da busca de texto para evitar requisições repetitivas no banco
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  // Carrega fornecedores quando a página, busca ou filtro muda
+  useEffect(() => {
+    loadFornecedores();
+  }, [currentPage, filterImplemento, debouncedSearch]);
+
+  const filteredFornecedores = fornecedores;
 
   // Busca CEP automático
   const handleCEPChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -270,7 +285,7 @@ export function FornecedoresPage() {
   };
 
   // Salvar
-  const handleSaveFornecedor = (e: React.FormEvent) => {
+  const handleSaveFornecedor = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formCNPJ || !formRazaoSocial) {
@@ -278,59 +293,59 @@ export function FornecedoresPage() {
       return;
     }
 
-    if (editingFornecedor) {
-      setFornecedores(prev =>
-        prev.map(f =>
-          f.id === editingFornecedor.id
-            ? {
-                ...f,
-                cnpj: formCNPJ,
-                razaoSocial: formRazaoSocial,
-                usuarioNome: formUsuarioNome,
-                usuarioEmail: formUsuarioEmail,
-                usuarioWhatsapp: formUsuarioWhatsapp,
-                contatoNome: formContatoNome,
-                contatoEmail: formContatoEmail,
-                contatoTelefone: formContatoTelefone,
-                implementos: formImplementos,
-                cep: formCEP,
-                endereco: formEndereco,
-                numero: formNumero,
-                complemento: formComplemento,
-                bairro: formBairro,
-                cidade: formCidade,
-                estado: formEstado
-              }
-            : f
-        )
-      );
-      toast.success('Fornecedor atualizado com sucesso!');
-    } else {
-      const newFornecedor: Fornecedor = {
-        id: Math.random().toString(36).slice(2),
-        createdAt: new Date().toLocaleDateString('pt-BR'),
+    setSaving(true);
+    try {
+      const dataFornecedor = {
         cnpj: formCNPJ,
-        razaoSocial: formRazaoSocial,
-        usuarioNome: formUsuarioNome,
-        usuarioEmail: formUsuarioEmail,
-        usuarioWhatsapp: formUsuarioWhatsapp,
-        contatoNome: formContatoNome,
-        contatoEmail: formContatoEmail,
-        contatoTelefone: formContatoTelefone,
-        implementos: formImplementos,
-        cep: formCEP,
-        endereco: formEndereco,
-        numero: formNumero,
-        complemento: formComplemento,
-        bairro: formBairro,
-        cidade: formCidade,
-        estado: formEstado
+        razao_social: formRazaoSocial,
+        usuario_nome: formUsuarioNome || null,
+        usuario_email: formUsuarioEmail || null,
+        usuario_whatsapp: formUsuarioWhatsapp || null,
+        contato_nome: formContatoNome || null,
+        contato_email: formContatoEmail || null,
+        contato_telefone: formContatoTelefone || null,
+        implementos: formImplementos || [],
+        cep: formCEP || null,
+        endereco: formEndereco || null,
+        numero: formNumero || null,
+        complemento: formComplemento || null,
+        bairro: formBairro || null,
+        cidade: formCidade || null,
+        estado: formEstado || null
       };
-      setFornecedores(prev => [newFornecedor, ...prev]);
-      toast.success('Novo fornecedor cadastrado com sucesso!');
-    }
 
-    setDrawerOpen(false);
+      if (editingFornecedor) {
+        const { error } = await supabase
+          .from('fornecedores')
+          .update(dataFornecedor)
+          .eq('id', editingFornecedor.id);
+
+        if (error) {
+          toast.error('Erro ao atualizar fornecedor', error.message);
+        } else {
+          toast.success('Fornecedor updated com sucesso!');
+          setDrawerOpen(false);
+          loadFornecedores();
+        }
+      } else {
+        const { error } = await supabase
+          .from('fornecedores')
+          .insert([dataFornecedor]);
+
+        if (error) {
+          toast.error('Erro ao cadastrar fornecedor', error.message);
+        } else {
+          toast.success('Novo fornecedor cadastrado com sucesso!');
+          setDrawerOpen(false);
+          setCurrentPage(1);
+          loadFornecedores();
+        }
+      }
+    } catch (err) {
+      console.error('Erro inesperado ao salvar fornecedor:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Excluir
@@ -339,39 +354,70 @@ export function FornecedoresPage() {
     setDeleteConfirmOpen(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (fornecedorToDelete) {
-      setFornecedores(prev => prev.filter(f => f.id !== fornecedorToDelete.id));
-      toast.success('Fornecedor removido com sucesso!');
-      setDeleteConfirmOpen(false);
-      setFornecedorToDelete(null);
+      try {
+        const { error } = await supabase
+          .from('fornecedores')
+          .delete()
+          .eq('id', fornecedorToDelete.id);
+
+        if (error) {
+          toast.error('Erro ao remover fornecedor', error.message);
+        } else {
+          toast.success('Fornecedor removido com sucesso!');
+          setDeleteConfirmOpen(false);
+          setFornecedorToDelete(null);
+          loadFornecedores();
+        }
+      } catch (err) {
+        console.error('Erro ao deletar fornecedor:', err);
+      }
     }
   };
 
   return (
     <DashboardLayout
       pageTitle="Fornecedores"
+      pageSubtitle="Gerencie seus fornecedores e seus respectivos implementos."
     >
-      {/* Seção superior de Título e Ações */}
-      <div className="fornecedores-header-section">
-        <div className="fornecedores-header-title-wrapper">
-          <div className="fornecedores-title-row">
-            <h2>Gestão dos fornecedores</h2>
-            <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', fontWeight: 500 }}>
-              {filteredFornecedores.length} {filteredFornecedores.length === 1 ? 'fornecedor' : 'fornecedores'}
-            </span>
-          </div>
-          <p className="fornecedores-desc">Gerencie seus fornecedores e seus respectivos implementos.</p>
+      {/* Barra de Filtros — Alinhada e Estilizada */}
+      <div
+        className="usuarios-filters"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--spacing-12)',
+          marginBottom: 'var(--spacing-24)',
+          flexWrap: 'wrap'
+        }}
+      >
+        <div style={{ width: 280 }}>
+          <Input
+            type="text"
+            placeholder="Nome, e-mail, razão ou CNPJ..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ height: 38 }}
+          />
         </div>
-        <div className="fornecedores-header-actions">
-          <Button
-            variant="secondary"
-            onClick={() => setFiltersOpen(!filtersOpen)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
-          >
-            <Funnel size={16} />
-            Filtros
-          </Button>
+        <div style={{ width: 220 }}>
+          <Select
+            options={FILTER_IMPLEMENTO_OPTIONS}
+            value={filterImplemento}
+            onChange={(opt) => {
+              setFilterImplemento(opt as OptionType);
+              setCurrentPage(1);
+            }}
+            placeholder="Implementos (Todos)"
+          />
+        </div>
+        <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', marginLeft: 'var(--spacing-8)' }}>
+          {totalCount} {totalCount === 1 ? 'fornecedor' : 'fornecedores'}
+        </span>
+
+        {/* Botão Novo Fornecedor alinhado à direita */}
+        <div style={{ marginLeft: 'auto' }}>
           <Button
             variant="primary"
             onClick={handleOpenCreateDrawer}
@@ -382,38 +428,6 @@ export function FornecedoresPage() {
           </Button>
         </div>
       </div>
-
-      {/* Barra de Filtros Colapsável */}
-      {filtersOpen && (
-        <div
-          className="usuarios-filters"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--spacing-12)',
-            marginBottom: 'var(--spacing-24)',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ width: 280 }}>
-            <Input
-              type="text"
-              placeholder="Nome ou e-mail..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              style={{ height: 38 }}
-            />
-          </div>
-          <div style={{ width: 220 }}>
-            <Select
-              options={FILTER_IMPLEMENTO_OPTIONS}
-              value={filterImplemento}
-              onChange={(opt) => setFilterImplemento(opt as OptionType)}
-              placeholder="Implementos (Todos)"
-            />
-          </div>
-        </div>
-      )}
 
       {/* Tabela de Fornecedores */}
       <div className="table-container" style={{ marginBottom: 'var(--spacing-24)' }}>
@@ -429,7 +443,13 @@ export function FornecedoresPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredFornecedores.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                  Carregando fornecedores...
+                </td>
+              </tr>
+            ) : filteredFornecedores.length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                   Nenhum fornecedor encontrado.
@@ -497,8 +517,17 @@ export function FornecedoresPage() {
               ))
             )}
           </tbody>
-        </table>
-      </div>
+            </table>
+            
+            {/* Paginação */}
+            <Pagination
+              currentPage={currentPage}
+              totalCount={totalCount}
+              itemsPerPage={ITEMS_PER_PAGE}
+              onPageChange={setCurrentPage}
+              itemLabel="fornecedores"
+            />
+          </div>
 
       {/* Drawer Formulário de Fornecedor */}
       <Drawer
@@ -512,7 +541,7 @@ export function FornecedoresPage() {
             <Button variant="secondary" onClick={() => setDrawerOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="primary" onClick={handleSaveFornecedor}>
+            <Button variant="primary" onClick={handleSaveFornecedor} loading={saving}>
               Salvar
             </Button>
           </div>
