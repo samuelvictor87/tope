@@ -10,6 +10,9 @@ import { FornecedoresPage } from './pages/fornecedores/FornecedoresPage';
 import { MeusDadosPage } from './pages/meus-dados/MeusDadosPage';
 import { ImplementosPage } from './pages/implementos/ImplementosPage';
 import { CaminhoesPage } from './pages/caminhoes/CaminhoesPage';
+import { ConfiguracoesPage } from './pages/configuracoes/ConfiguracoesPage';
+import { CotacoesPage } from './pages/cotacoes/CotacoesPage';
+import { NovaCotacaoPage } from './pages/cotacoes/NovaCotacaoPage';
 
 export default function App() {
   return (
@@ -31,7 +34,7 @@ export default function App() {
             <Route path="/fornecedores" element={<Navigate to="/painel/fornecedores" replace />} />
             <Route path="/clientes" element={<Navigate to="/painel/clientes" replace />} />
             <Route path="/meus-dados" element={<Navigate to="/painel/meus-dados" replace />} />
-            <Route path="/configuracoes" element={<Navigate to="/painel/meus-dados" replace />} />
+            <Route path="/configuracoes" element={<Navigate to="/painel/configuracoes" replace />} />
 
             {/* Rotas protegidas sob o painel */}
             <Route path="/painel/usuarios" element={<ProtectedRoute><UsuariosPage /></ProtectedRoute>} />
@@ -39,7 +42,11 @@ export default function App() {
             <Route path="/painel/implementos" element={<ProtectedRoute><ImplementosPage /></ProtectedRoute>} />
             <Route path="/painel/fornecedores" element={<ProtectedRoute><FornecedoresPage /></ProtectedRoute>} />
             <Route path="/painel/clientes" element={<ProtectedRoute><ClientesPage /></ProtectedRoute>} />
+            <Route path="/painel/configuracoes" element={<ProtectedRoute><ConfiguracoesPage /></ProtectedRoute>} />
             <Route path="/painel/meus-dados" element={<ProtectedRoute><MeusDadosPage /></ProtectedRoute>} />
+            <Route path="/painel/cotacoes" element={<ProtectedRoute><CotacoesPage /></ProtectedRoute>} />
+            <Route path="/painel/cotacoes/nova" element={<ProtectedRoute><NovaCotacaoPage /></ProtectedRoute>} />
+            <Route path="/painel/cotacoes/:id/editar" element={<ProtectedRoute><NovaCotacaoPage /></ProtectedRoute>} />
 
             {/* Rota do Styleguide */}
             <Route path="/styleguide" element={<StyleGuidePage />} />

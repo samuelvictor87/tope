@@ -1,5 +1,5 @@
 // pages/fornecedores/FornecedoresPage.tsx — Módulo de Fornecedores TOPE
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Plus, Pencil, Trash, Question } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -82,6 +82,41 @@ const maskPhone = (val: string) => {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 3)} ${digits.slice(3, 7)}-${digits.slice(7)}`;
 };
 
+const validarCNPJ = (cnpj: string): boolean => {
+  const clean = cnpj.replace(/\D/g, '');
+  if (clean.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(clean)) return false;
+
+  let tamanho = clean.length - 2;
+  let numeros = clean.substring(0, tamanho);
+  const digitos = clean.substring(tamanho);
+  let soma = 0;
+  let pos = tamanho - 7;
+
+  for (let i = tamanho; i >= 1; i--) {
+    soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+    if (pos < 2) pos = 9;
+  }
+
+  let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+  if (resultado !== parseInt(digitos.charAt(0))) return false;
+
+  tamanho = tamanho + 1;
+  numeros = clean.substring(0, tamanho);
+  soma = 0;
+  pos = tamanho - 7;
+
+  for (let i = tamanho; i >= 1; i--) {
+    soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+    if (pos < 2) pos = 9;
+  }
+
+  resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+  if (resultado !== parseInt(digitos.charAt(1))) return false;
+
+  return true;
+};
+
 export function FornecedoresPage() {
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
@@ -121,6 +156,9 @@ export function FornecedoresPage() {
   const [formBairro, setFormBairro] = useState('');
   const [formCidade, setFormCidade] = useState('');
   const [formEstado, setFormEstado] = useState('');
+
+  const [buscandoCNPJ, setBuscandoCNPJ] = useState(false);
+  const isCNPJValid = useMemo(() => validarCNPJ(formCNPJ), [formCNPJ]);
 
   // Estados de Carregamento e Paginação
   const [loading, setLoading] = useState(false);
@@ -226,17 +264,73 @@ export function FornecedoresPage() {
     }
   };
 
-  // Simulação de preenchimento CNPJ para agilizar protótipo
   const handleCNPJChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawVal = e.target.value;
     const masked = maskCNPJ(rawVal);
     setFormCNPJ(masked);
+  };
 
-    const clean = rawVal.replace(/\D/g, '');
-    if (clean.length === 14 && !formRazaoSocial) {
-      // Auto-preenche com nome simulado
-      setFormRazaoSocial('FORNECEDOR DE EXEMPLO ' + clean.slice(-4) + ' LTDA');
-      toast.info('Razão social simulada para o CNPJ informado!');
+  const handleBuscarCNPJ = async () => {
+    const clean = formCNPJ.replace(/\D/g, '');
+    if (!validarCNPJ(clean)) {
+      toast.error('CNPJ Inválido', 'O CNPJ informado não possui formato ou dígitos verificadores válidos.');
+      return;
+    }
+
+    setBuscandoCNPJ(true);
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`);
+      
+      if (res.status === 404) {
+        toast.error('CNPJ não encontrado', 'Este CNPJ não foi localizado na base da Receita Federal.');
+        return;
+      }
+
+      if (!res.ok) {
+        toast.error('Erro na busca', 'Ocorreu um erro ao consultar o CNPJ. Tente novamente.');
+        return;
+      }
+
+      const data = await res.json();
+      
+      if (data.razao_social) {
+        setFormRazaoSocial(data.razao_social);
+      }
+      
+      if (data.cep) {
+        setFormCEP(maskCEP(data.cep));
+      }
+      
+      if (data.logradouro) {
+        setFormEndereco(data.logradouro);
+      }
+      
+      if (data.numero) {
+        setFormNumero(data.numero);
+      }
+      
+      if (data.complemento) {
+        setFormComplemento(data.complemento);
+      }
+      
+      if (data.bairro) {
+        setFormBairro(data.bairro);
+      }
+      
+      if (data.municipio) {
+        setFormCidade(data.municipio);
+      }
+      
+      if (data.uf) {
+        setFormEstado(data.uf);
+      }
+      
+      toast.success('Cadastro e localização preenchidos com sucesso!');
+    } catch (err) {
+      console.error('Erro ao buscar CNPJ:', err);
+      toast.error('Erro de conexão', 'Não foi possível conectar ao serviço de consulta de CNPJ.');
+    } finally {
+      setBuscandoCNPJ(false);
     }
   };
 
@@ -553,18 +647,32 @@ export function FornecedoresPage() {
           <div className="fornecedor-form-section">
             <div className="fornecedor-section-info">
               <h3 className="fornecedor-section-title">
-                Cadastro
+                Cadastro <span title="Informe o CNPJ para preencher a razão social" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'help' }}><Question size={14} style={{ color: 'var(--color-grey-400)' }} /></span>
               </h3>
               <p className="fornecedor-section-desc">Informe o CNPJ para preencher a razão social</p>
             </div>
             <div className="fornecedor-section-fields">
-              <Input
-                label="CNPJ"
-                placeholder="00.000.000/0000-00"
-                value={formCNPJ}
-                onChange={handleCNPJChange}
-                required
-              />
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'var(--spacing-8)' }}>
+                <div style={{ flex: 1 }}>
+                  <Input
+                    label="CNPJ"
+                    placeholder="00.000.000/0000-00"
+                    value={formCNPJ}
+                    onChange={handleCNPJChange}
+                    required
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={handleBuscarCNPJ}
+                  disabled={!isCNPJValid || buscandoCNPJ}
+                  loading={buscandoCNPJ}
+                  style={{ height: 40, whiteSpace: 'nowrap' }}
+                >
+                  Buscar
+                </Button>
+              </div>
               <Input
                 label="Razão social"
                 placeholder="Ex: Minha Empresa S.A."

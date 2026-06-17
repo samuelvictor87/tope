@@ -7,7 +7,9 @@ import {
   User,
   Users,
   Gear,
-  SignOut
+  SignOut,
+  Sliders,
+  ClipboardText
 } from '@phosphor-icons/react';
 import { useAuth } from '../../contexts/AuthContext';
 import logoTope from '../../assets/logo-tope.png';
@@ -32,11 +34,13 @@ export function DashboardLayout({
   const { user, profile, signOut } = useAuth();
 
   const menuItems = [
+    { path: '/painel/cotacoes', label: 'Cotações', icon: <ClipboardText size={20} /> },
     { path: '/painel/caminhoes', label: 'Caminhões', icon: <Truck size={20} /> },
     { path: '/painel/implementos', label: 'Implementos', icon: <Wrench size={20} /> },
     { path: '/painel/fornecedores', label: 'Fornecedores', icon: <UsersThree size={20} /> },
     { path: '/painel/clientes', label: 'Clientes', icon: <Users size={20} /> },
     { path: '/painel/usuarios', label: 'Usuários', icon: <User size={20} /> },
+    { path: '/painel/configuracoes', label: 'Configurações', icon: <Sliders size={20} /> },
     { path: '/painel/meus-dados', label: 'Meus dados', icon: <Gear size={20} /> },
   ];
 
@@ -152,17 +156,6 @@ export function DashboardLayout({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-16)' }}>
             {headerActions}
-            <Link
-              to="/styleguide"
-              style={{
-                fontSize: 'var(--font-size-sm)',
-                color: 'var(--color-primary)',
-                fontWeight: 600,
-                textDecoration: 'none',
-              }}
-            >
-              Ir para Styleguide
-            </Link>
           </div>
         </header>
 

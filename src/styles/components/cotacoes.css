@@ -1,0 +1,447 @@
+/* styles/components/cotacoes.css — CRM Dibracam / TOPE */
+
+/* Cabeçalho de Cotações */
+.cotacoes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-24);
+  flex-wrap: wrap;
+  gap: var(--spacing-16);
+}
+
+.cotacoes-header-info h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+  margin-bottom: 4px;
+}
+
+.cotacoes-header-info p {
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-500);
+  margin: 0;
+}
+
+/* Filtros */
+.cotacoes-filters {
+  display: flex;
+  gap: var(--spacing-12);
+  align-items: center;
+  margin-bottom: var(--spacing-24);
+  flex-wrap: wrap;
+  background: var(--color-surface);
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-16);
+}
+
+.cotacoes-search-wrap {
+  flex: 1;
+  min-width: 240px;
+}
+
+.cotacoes-select-wrap {
+  width: 200px;
+}
+
+.cotacoes-count {
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-500);
+  margin-left: auto;
+  white-space: nowrap;
+  background: var(--color-grey-100);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+/* Badges de Status da Cotação */
+.badge-status {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 2px 10px;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-status-avaliacao {
+  background-color: rgba(245, 158, 11, 0.08); /* Amber */
+  color: #d97706;
+  border-color: rgba(245, 158, 11, 0.15);
+}
+
+.badge-status-orcamento {
+  background-color: rgba(59, 130, 246, 0.08); /* Blue */
+  color: #2563eb;
+  border-color: rgba(59, 130, 246, 0.15);
+}
+
+.badge-status-completo {
+  background-color: rgba(16, 185, 129, 0.08); /* Green */
+  color: #059669;
+  border-color: rgba(16, 185, 129, 0.15);
+}
+
+/* Empilhamentos da tabela */
+.cotacao-cliente-cell, .cotacao-vendedor-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cotacao-primary-text {
+  font-weight: 600;
+  color: var(--color-grey-800);
+  font-size: var(--font-size-sm);
+}
+
+.cotacao-secondary-text {
+  font-size: var(--font-size-xs);
+  color: var(--color-grey-500);
+}
+
+/* Formulário de Cotação */
+.cotacao-form-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-24);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.cotacao-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-24);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.cotacao-card-title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-grey-900);
+  margin-top: 0;
+  margin-bottom: var(--spacing-16);
+  padding-bottom: var(--spacing-8);
+  border-bottom: 1px solid var(--color-grey-100);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.cotacao-card-title svg {
+  color: var(--color-primary);
+}
+
+/* Chips de Prazos */
+.prazos-container {
+  display: flex;
+  gap: var(--spacing-12);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-8);
+}
+
+.prazo-chip {
+  padding: var(--spacing-8) var(--spacing-16);
+  background-color: var(--color-grey-100);
+  border: 1px solid var(--color-grey-200);
+  color: var(--color-grey-700);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.prazo-chip:hover {
+  background-color: var(--color-grey-200);
+}
+
+.prazo-chip.active {
+  background-color: var(--color-primary-light);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* Detalhamento de Itens */
+.detalhamento-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-8) 0;
+}
+
+.detalhamento-toggle-info h4 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-grey-800);
+}
+
+.detalhamento-toggle-info p {
+  margin: 4px 0 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-grey-500);
+}
+
+.detalhamento-itens-secao {
+  margin-top: var(--spacing-16);
+  padding-top: var(--spacing-16);
+  border-top: 1px solid var(--color-grey-100);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+}
+
+.item-adicionado-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: var(--spacing-16);
+  align-items: flex-end;
+  padding: var(--spacing-16);
+  background-color: var(--color-grey-50);
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-md);
+  position: relative;
+}
+
+.item-adicionado-row.implemento-row {
+  grid-template-columns: 1.5fr 1.5fr 1fr 1fr auto;
+}
+
+.btn-remover-item {
+  color: var(--color-error);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--spacing-8);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast);
+}
+
+.btn-remover-item:hover {
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+.btn-adicionar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-primary);
+  background: none;
+  border: 1px dashed var(--color-primary);
+  padding: var(--spacing-10) var(--spacing-16);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  justify-content: center;
+}
+
+.btn-adicionar-item:hover {
+  background-color: rgba(252, 135, 0, 0.05);
+  border-style: solid;
+}
+
+/* Área de Upload de Arquivos */
+.dropzone-container {
+  border: 2px dashed var(--color-grey-300);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-24);
+  text-align: center;
+  background-color: var(--color-grey-50);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.dropzone-container:hover {
+  border-color: var(--color-primary);
+  background-color: rgba(252, 135, 0, 0.01);
+}
+
+.dropzone-icon {
+  color: var(--color-grey-400);
+  margin-bottom: var(--spacing-12);
+}
+
+.dropzone-text h5 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-grey-700);
+}
+
+.dropzone-text p {
+  margin: 4px 0 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-grey-500);
+}
+
+.anexos-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-16);
+}
+
+.anexo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-10) var(--spacing-12);
+  background: #ffffff;
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.anexo-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-10);
+  color: var(--color-grey-700);
+}
+
+.anexo-size {
+  font-size: var(--font-size-xs);
+  color: var(--color-grey-450);
+}
+
+.btn-remover-anexo {
+  color: var(--color-grey-400);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-remover-anexo:hover {
+  color: var(--color-error);
+  background-color: rgba(220, 38, 38, 0.05);
+}
+
+/* Comentários Drawer */
+.comentarios-drawer-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.comentarios-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-16);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  background-color: var(--color-grey-50);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-16);
+  max-height: 400px;
+  border: 1px solid var(--color-grey-200);
+}
+
+.comentario-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--spacing-12);
+  background-color: #ffffff;
+  border: 1px solid var(--color-grey-150);
+  border-radius: var(--radius-md);
+}
+
+.comentario-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-xs);
+}
+
+.comentario-autor {
+  font-weight: 600;
+  color: var(--color-grey-800);
+}
+
+.comentario-data {
+  color: var(--color-grey-450);
+}
+
+.comentario-texto {
+  font-size: var(--font-size-sm);
+  color: var(--color-grey-700);
+  line-height: 1.4;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.comentario-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.comentario-input-row {
+  display: flex;
+  gap: var(--spacing-8);
+  align-items: flex-end;
+}
+
+.comentario-input-row textarea {
+  flex: 1;
+  resize: none;
+  min-height: 40px;
+  height: 40px;
+}
+
+.comentarios-empty {
+  text-align: center;
+  padding: var(--spacing-32) var(--spacing-16);
+  color: var(--color-grey-400);
+  font-size: var(--font-size-sm);
+}
+
+/* Alertas de CNPJ */
+.cnpj-status-warning {
+  background-color: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #b45309;
+  padding: var(--spacing-8) var(--spacing-12);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-8);
+}
+
+.cnpj-status-success {
+  background-color: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: #047857;
+  padding: var(--spacing-8) var(--spacing-12);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-8);
+}

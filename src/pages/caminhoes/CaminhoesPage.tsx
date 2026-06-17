@@ -413,13 +413,13 @@ export function CaminhoesPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: '12%' }}>Data</th>
-                  <th style={{ width: '18%' }}>Família</th>
+                  <th style={{ width: '10%' }}>Data</th>
+                  <th style={{ width: '15%' }}>Família</th>
                   <th style={{ width: '25%' }}>Modelo</th>
                   <th style={{ width: '15%' }}>Transmissão</th>
                   <th style={{ width: '12%' }}>Entre-eixos</th>
                   <th style={{ width: '13%' }}>Preços</th>
-                  <th style={{ width: '5%', textAlign: 'right' }}>Ações</th>
+                  <th style={{ width: '10%', textAlign: 'right' }}>Ações</th>
                 </tr>
               </thead>
               <tbody>

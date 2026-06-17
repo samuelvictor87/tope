@@ -198,3 +198,30 @@
   color: var(--color-primary-contrast);
   border-color: var(--color-primary);
 }
+
+/* Botões de Ações em Tabelas */
+.action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  color: var(--color-grey-400);
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn:hover {
+  background-color: var(--color-grey-100);
+}
+
+.action-btn-edit:hover {
+  color: var(--color-primary);
+}
+
+.action-btn-delete:hover {
+  color: var(--color-destructive);
+}
+
