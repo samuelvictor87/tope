@@ -1,4 +1,4 @@
-// pages/styleguide/sections/ExamplesSection.tsx — CRM Dibracam
+// pages/styleguide/sections/ExamplesSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview } from '../StyleGuideSection';
 import { Button } from '../../../components/ui/Button';
 import { Select } from '../../../components/ui/Select';
@@ -13,7 +13,7 @@ import {
 
 export function ExamplesSection() {
   return (
-    <StyleGuideSection id="exemplos" title="Exemplos Reais" description="Composições de componentes usadas em telas reais do CRM Dibracam.">
+    <StyleGuideSection id="exemplos" title="Exemplos Reais" description="Composições de componentes usadas em telas reais do TOPE.">
 
       <SubsectionTitle>Barra de Filtros</SubsectionTitle>
       <Preview label="Filtro de listagem — Oportunidades">

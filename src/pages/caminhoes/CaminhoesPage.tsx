@@ -30,7 +30,7 @@ interface Caminhao {
   createdAt: string;
   family: string;
   model: string;
-  transmission: string;
+  transmission: string[];
   wheelbases: Wheelbase[];
 }
 
@@ -95,7 +95,7 @@ export function CaminhoesPage() {
   // Formulário - Ficha Técnica
   const [formFamily, setFormFamily] = useState<OptionType | null>(null);
   const [formModel, setFormModel] = useState('');
-  const [formTransmission, setFormTransmission] = useState<OptionType | null>(null);
+  const [formTransmission, setFormTransmission] = useState<OptionType[] | null>(null);
 
   // Formulário - Lista de Entre-eixos Vinculados
   const [formWheelbases, setFormWheelbases] = useState<Wheelbase[]>([]);
@@ -151,7 +151,7 @@ export function CaminhoesPage() {
           createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
           family: item.familia,
           model: item.modelo,
-          transmission: item.transmissao,
+          transmission: Array.isArray(item.transmissao) ? item.transmissao : [item.transmissao],
           wheelbases: (item.caminhoes_entre_eixos || []).map((w: any) => ({
             dimension: w.dimensao,
             price: w.preco,
@@ -191,7 +191,7 @@ export function CaminhoesPage() {
     setEditingCaminhao(null);
     setFormFamily(null);
     setFormModel('');
-    setFormTransmission(null);
+    setFormTransmission([]);
     setFormWheelbases([]);
     clearWbFields();
     setIsFormMode(true);
@@ -201,7 +201,8 @@ export function CaminhoesPage() {
     setEditingCaminhao(cam);
     setFormFamily({ value: cam.family, label: cam.family });
     setFormModel(cam.model);
-    setFormTransmission({ value: cam.transmission, label: cam.transmission });
+    const transArray = Array.isArray(cam.transmission) ? cam.transmission : [cam.transmission];
+    setFormTransmission(transArray.map(t => ({ value: t, label: t })));
     setFormWheelbases(cam.wheelbases);
     clearWbFields();
     setIsFormMode(true);
@@ -246,8 +247,8 @@ export function CaminhoesPage() {
 
   // Salvar Caminhão
   const handleSaveCaminhao = async () => {
-    if (!formFamily || !formModel.trim() || !formTransmission) {
-      toast.error('Ficha técnica incompleta', 'Preencha a família, modelo e transmissão do caminhão.');
+    if (!formFamily || !formModel.trim() || !formTransmission || formTransmission.length === 0) {
+      toast.error('Ficha técnica incompleta', 'Preencha a família, modelo e pelo menos uma transmissão do caminhão.');
       return;
     }
 
@@ -261,7 +262,7 @@ export function CaminhoesPage() {
       const dataCaminhao = {
         familia: formFamily.value,
         modelo: formModel.trim(),
-        transmissao: formTransmission.value
+        transmissao: formTransmission.map(opt => opt.value)
       };
 
       let caminhaoId = '';
@@ -441,7 +442,7 @@ export function CaminhoesPage() {
                       <td>{cam.createdAt}</td>
                       <td>{cam.family}</td>
                       <td style={{ fontWeight: 600, color: 'var(--color-grey-800)' }}>{cam.model}</td>
-                      <td>{cam.transmission}</td>
+                      <td>{Array.isArray(cam.transmission) ? cam.transmission.join(', ') : cam.transmission}</td>
                       <td>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                           {cam.wheelbases.map(w => (
@@ -527,10 +528,11 @@ export function CaminhoesPage() {
 
               <Select
                 label="Transmissão"
-                placeholder="Selecione a transmissão..."
+                placeholder="Selecione as transmissões..."
                 options={TRANSMISSION_OPTIONS}
                 value={formTransmission}
-                onChange={opt => setFormTransmission(opt as OptionType)}
+                onChange={opt => setFormTransmission(opt as OptionType[])}
+                isMulti
               />
             </div>
 

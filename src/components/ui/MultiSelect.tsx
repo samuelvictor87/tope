@@ -1,4 +1,4 @@
-// components/ui/MultiSelect.tsx — CRM Dibracam
+// components/ui/MultiSelect.tsx — TOPE
 import React, { useState, useRef, useEffect } from 'react';
 import { CaretDown, X, Check } from '@phosphor-icons/react';
 import '../../styles/components/multi-select.css';

@@ -7,12 +7,12 @@ import { LoginPage } from './pages/login/LoginPage';
 import { UsuariosPage } from './pages/usuarios/UsuariosPage';
 import { ClientesPage } from './pages/clientes/ClientesPage';
 import { FornecedoresPage } from './pages/fornecedores/FornecedoresPage';
-import { MeusDadosPage } from './pages/meus-dados/MeusDadosPage';
 import { ImplementosPage } from './pages/implementos/ImplementosPage';
 import { CaminhoesPage } from './pages/caminhoes/CaminhoesPage';
 import { ConfiguracoesPage } from './pages/configuracoes/ConfiguracoesPage';
 import { CotacoesPage } from './pages/cotacoes/CotacoesPage';
 import { NovaCotacaoPage } from './pages/cotacoes/NovaCotacaoPage';
+import { CalculosPage } from './pages/calculos/CalculosPage';
 
 export default function App() {
   return (
@@ -43,7 +43,8 @@ export default function App() {
             <Route path="/painel/fornecedores" element={<ProtectedRoute><FornecedoresPage /></ProtectedRoute>} />
             <Route path="/painel/clientes" element={<ProtectedRoute><ClientesPage /></ProtectedRoute>} />
             <Route path="/painel/configuracoes" element={<ProtectedRoute><ConfiguracoesPage /></ProtectedRoute>} />
-            <Route path="/painel/meus-dados" element={<ProtectedRoute><MeusDadosPage /></ProtectedRoute>} />
+            <Route path="/painel/meus-dados" element={<Navigate to="/painel/configuracoes?aba=dados" replace />} />
+            <Route path="/painel/calculos" element={<ProtectedRoute><CalculosPage /></ProtectedRoute>} />
             <Route path="/painel/cotacoes" element={<ProtectedRoute><CotacoesPage /></ProtectedRoute>} />
             <Route path="/painel/cotacoes/nova" element={<ProtectedRoute><NovaCotacaoPage /></ProtectedRoute>} />
             <Route path="/painel/cotacoes/:id/editar" element={<ProtectedRoute><NovaCotacaoPage /></ProtectedRoute>} />

@@ -1,4 +1,4 @@
-// pages/styleguide/sections/TypographySection.tsx — CRM Dibracam
+// pages/styleguide/sections/TypographySection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle } from '../StyleGuideSection';
 
 const LEVELS = [

@@ -1,4 +1,4 @@
-// components/ui/Card.tsx — CRM Dibracam
+// components/ui/Card.tsx — TOPE
 import React from 'react';
 import '../../styles/components/card.css';
 

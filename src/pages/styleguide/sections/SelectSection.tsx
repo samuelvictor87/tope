@@ -1,4 +1,4 @@
-// pages/styleguide/sections/SelectSection.tsx — CRM Dibracam
+// pages/styleguide/sections/SelectSection.tsx — TOPE
 import { useState } from 'react';
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Select } from '../../../components/ui/Select';

@@ -1,4 +1,4 @@
-// pages/styleguide/sections/SpacingRadiusSection.tsx — CRM Dibracam
+// pages/styleguide/sections/SpacingRadiusSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle } from '../StyleGuideSection';
 
 const SPACING = [

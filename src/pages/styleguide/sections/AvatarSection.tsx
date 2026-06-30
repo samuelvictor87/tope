@@ -1,4 +1,4 @@
-// pages/styleguide/sections/AvatarSection.tsx — CRM Dibracam
+// pages/styleguide/sections/AvatarSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Avatar } from '../../../components/ui/Avatar';
 

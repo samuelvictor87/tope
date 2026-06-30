@@ -1,4 +1,4 @@
-// pages/styleguide/sections/BadgeSection.tsx — CRM Dibracam
+// pages/styleguide/sections/BadgeSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Badge } from '../../../components/ui/Badge';
 

@@ -1,4 +1,4 @@
-// pages/styleguide/sections/FeedbackSection.tsx — CRM Dibracam
+// pages/styleguide/sections/FeedbackSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { LoadingState } from '../../../components/ui/LoadingState';
@@ -40,7 +40,7 @@ export function FeedbackSection() {
           </div>
         </Preview>
         <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-grey-400)', fontStyle: 'italic', margin: 'var(--spacing-8) 0 0' }}>
-          ⚠️ O ícone do caminhão (<code>&lt;Truck&gt;</code> do Phosphor) é provisório. Será substituído pelo asset oficial do caminhão Dibracam quando disponível.
+          ⚠️ O ícone do caminhão (<code>&lt;Truck&gt;</code> do Phosphor) é provisório. Será substituído pelo asset oficial do caminhão TOPE quando disponível.
         </p>
         <CodeBlock>{`<LoadingState variant="inline" message="Carregando..." />
 <LoadingState variant="fullscreen" />

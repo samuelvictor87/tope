@@ -1,4 +1,4 @@
-// pages/styleguide/sections/ColorsSection.tsx — CRM Dibracam
+// pages/styleguide/sections/ColorsSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle } from '../StyleGuideSection';
 
 interface ColorSwatch {

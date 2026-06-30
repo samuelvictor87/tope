@@ -1,4 +1,4 @@
-// components/ui/Button.tsx — CRM Dibracam
+// components/ui/Button.tsx — TOPE
 import React from 'react';
 import '../../styles/components/button.css';
 

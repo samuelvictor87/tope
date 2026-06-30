@@ -1,4 +1,4 @@
-// components/ui/LoadingState.tsx — CRM Dibracam
+// components/ui/LoadingState.tsx — TOPE
 import React from 'react';
 import { Truck } from '@phosphor-icons/react';
 

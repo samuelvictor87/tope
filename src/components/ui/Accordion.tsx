@@ -1,4 +1,4 @@
-// components/ui/Accordion.tsx — CRM Dibracam
+// components/ui/Accordion.tsx — TOPE
 import React, { useState } from 'react';
 import { CaretDown } from '@phosphor-icons/react';
 import '../../styles/components/accordion.css';

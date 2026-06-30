@@ -1,4 +1,4 @@
-// pages/styleguide/sections/ModalSection.tsx — CRM Dibracam
+// pages/styleguide/sections/ModalSection.tsx — TOPE
 import { useState } from 'react';
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Modal } from '../../../components/ui/Modal';

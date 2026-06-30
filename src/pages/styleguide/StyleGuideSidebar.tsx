@@ -1,4 +1,4 @@
-// pages/styleguide/StyleGuideSidebar.tsx — CRM Dibracam
+// pages/styleguide/StyleGuideSidebar.tsx — TOPE
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';

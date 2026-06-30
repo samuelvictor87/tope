@@ -1,4 +1,4 @@
-// components/ui/DrawerOportunidade.tsx — CRM Dibracam
+// components/ui/DrawerOportunidade.tsx — TOPE
 // Container reutilizável — pode ser usado em qualquer contexto do sistema
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';

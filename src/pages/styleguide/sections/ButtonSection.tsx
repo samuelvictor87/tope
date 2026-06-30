@@ -1,4 +1,4 @@
-// pages/styleguide/sections/ButtonSection.tsx — CRM Dibracam
+// pages/styleguide/sections/ButtonSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Button } from '../../../components/ui/Button';
 import { Plus, Eye, Trash } from '@phosphor-icons/react';

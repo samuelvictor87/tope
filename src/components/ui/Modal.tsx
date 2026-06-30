@@ -1,4 +1,4 @@
-// components/ui/Modal.tsx — CRM Dibracam
+// components/ui/Modal.tsx — TOPE
 import React, { useEffect } from 'react';
 import { X } from '@phosphor-icons/react';
 import { createPortal } from 'react-dom';

@@ -1,4 +1,4 @@
-// pages/styleguide/sections/TextareaSection.tsx — CRM Dibracam
+// pages/styleguide/sections/TextareaSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Textarea } from '../../../components/ui/Textarea';
 import { FileUpload } from '../../../components/ui/FileUpload';

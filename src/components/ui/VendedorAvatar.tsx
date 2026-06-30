@@ -1,4 +1,4 @@
-// components/ui/VendedorAvatar.tsx — CRM Dibracam
+// components/ui/VendedorAvatar.tsx — TOPE
 function getInitials(name: string): string {
   return name
     .split(' ')

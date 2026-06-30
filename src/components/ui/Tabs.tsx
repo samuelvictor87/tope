@@ -1,4 +1,4 @@
-// components/ui/Tabs.tsx — CRM Dibracam
+// components/ui/Tabs.tsx — TOPE
 import React from 'react';
 import '../../styles/components/tabs.css';
 

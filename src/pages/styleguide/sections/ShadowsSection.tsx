@@ -1,4 +1,4 @@
-// pages/styleguide/sections/ShadowsSection.tsx — CRM Dibracam
+// pages/styleguide/sections/ShadowsSection.tsx — TOPE
 import { StyleGuideSection } from '../StyleGuideSection';
 
 const SHADOWS = [

@@ -1,4 +1,4 @@
-// components/ui/FileUpload.tsx — CRM Dibracam
+// components/ui/FileUpload.tsx — TOPE
 import React, { useRef, useState } from 'react';
 import { UploadSimple, Camera, X, File as FileIcon } from '@phosphor-icons/react';
 import '../../styles/components/file-upload.css';

@@ -1,4 +1,4 @@
-// components/ui/InputSearch.tsx — CRM Dibracam
+// components/ui/InputSearch.tsx — TOPE
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MagnifyingGlass, X, CircleNotch } from '@phosphor-icons/react';
 import '../../styles/components/input.css';

@@ -1,4 +1,4 @@
-// components/ui/InputNumber.tsx — CRM Dibracam
+// components/ui/InputNumber.tsx — TOPE
 import React, { useState, useEffect } from 'react';
 import '../../styles/components/input.css';
 

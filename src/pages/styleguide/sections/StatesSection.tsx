@@ -1,4 +1,4 @@
-// pages/styleguide/sections/StatesSection.tsx — CRM Dibracam
+// pages/styleguide/sections/StatesSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview } from '../StyleGuideSection';
 import { Button } from '../../../components/ui/Button';
 

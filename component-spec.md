@@ -1,6 +1,6 @@
-# 📦 Component Spec — CRM Dibracam
+# 📦 Component Spec — TOPE
 
-> Este documento é a **fonte oficial de especificação** de todos os componentes reutilizáveis do sistema CRM Dibracam.  
+> Este documento é a **fonte oficial de especificação** de todos os componentes reutilizáveis do sistema TOPE.  
 > Ele complementa o [PRD (`prd.md`)](./prd.md), o [Style Guide (`style-guide.md`)](./style-guide.md) e os [Design Tokens (`design-tokens.md`)](./design-tokens.md).
 
 **Regra**: Nenhum componente deve ser implementado sem antes consultar esta especificação. Nenhum estilo visual deve ser aplicado fora dos tokens definidos em `design-tokens.md`.
@@ -482,7 +482,7 @@ Mesmas do `Input` base, mais:
 
 | Prop | Tipo | Descrição |
 |:---|:---|:---|
-| `icon` | `ReactNode` | Ícone ou ilustração (default: caminhão Dibracam estático) |
+| `icon` | `ReactNode` | Ícone ou ilustração (default: caminhão TOPE estático) |
 | `title` | `string` | Título principal (ex: "Nenhum dado encontrado") |
 | `description` | `string` | Texto auxiliar |
 | `action` | `ReactNode` | Botão de ação (ex: "Tentar novamente" ou "Filtrar") |

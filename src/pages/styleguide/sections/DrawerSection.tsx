@@ -1,4 +1,4 @@
-// pages/styleguide/sections/DrawerSection.tsx — CRM Dibracam
+// pages/styleguide/sections/DrawerSection.tsx — TOPE
 import { useState } from 'react';
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Drawer } from '../../../components/ui/Drawer';

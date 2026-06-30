@@ -1,4 +1,4 @@
-// pages/styleguide/sections/DataTableSection.tsx — CRM Dibracam
+// pages/styleguide/sections/DataTableSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { DataTable } from '../../../components/ui/DataTable';
 import type { Column } from '../../../components/ui/DataTable';
@@ -34,10 +34,10 @@ const DEMO_COLUMNS: Column<DemoRow>[] = [
 ];
 
 const DEMO_DATA: DemoRow[] = [
-  { nome: 'João Silva', email: 'joao@dibracam.com', filial: 'São Paulo', status: 'Ativo' },
-  { nome: 'Maria Santos', email: 'maria@dibracam.com', filial: 'Curitiba', status: 'Ativo' },
-  { nome: 'Carlos Souza', email: 'carlos@dibracam.com', filial: 'Rio de Janeiro', status: 'Inativo' },
-  { nome: 'Ana Ferreira', email: 'ana@dibracam.com', filial: 'São Paulo', status: 'Ativo' },
+  { nome: 'João Silva', email: 'joao@TOPE.com', filial: 'São Paulo', status: 'Ativo' },
+  { nome: 'Maria Santos', email: 'maria@TOPE.com', filial: 'Curitiba', status: 'Ativo' },
+  { nome: 'Carlos Souza', email: 'carlos@TOPE.com', filial: 'Rio de Janeiro', status: 'Inativo' },
+  { nome: 'Ana Ferreira', email: 'ana@TOPE.com', filial: 'São Paulo', status: 'Ativo' },
 ];
 
 export function DataTableSection() {

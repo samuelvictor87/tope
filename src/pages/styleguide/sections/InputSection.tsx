@@ -1,4 +1,4 @@
-// pages/styleguide/sections/InputSection.tsx — CRM Dibracam
+// pages/styleguide/sections/InputSection.tsx — TOPE
 import { useState } from 'react';
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Input } from '../../../components/ui/Input';

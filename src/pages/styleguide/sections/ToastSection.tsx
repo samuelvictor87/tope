@@ -1,4 +1,4 @@
-// pages/styleguide/sections/ToastSection.tsx — CRM Dibracam
+// pages/styleguide/sections/ToastSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Button } from '../../../components/ui/Button';
 import { useToast } from '../../../components/ui/Toast';

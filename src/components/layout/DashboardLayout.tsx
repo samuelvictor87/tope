@@ -8,8 +8,8 @@ import {
   Users,
   Gear,
   SignOut,
-  Sliders,
-  ClipboardText
+  ClipboardText,
+  Calculator
 } from '@phosphor-icons/react';
 import { useAuth } from '../../contexts/AuthContext';
 import logoTope from '../../assets/logo-tope.png';
@@ -40,8 +40,8 @@ export function DashboardLayout({
     { path: '/painel/fornecedores', label: 'Fornecedores', icon: <UsersThree size={20} /> },
     { path: '/painel/clientes', label: 'Clientes', icon: <Users size={20} /> },
     { path: '/painel/usuarios', label: 'Usuários', icon: <User size={20} /> },
-    { path: '/painel/configuracoes', label: 'Configurações', icon: <Sliders size={20} /> },
-    { path: '/painel/meus-dados', label: 'Meus dados', icon: <Gear size={20} /> },
+    { path: '/painel/calculos', label: 'Cálculos', icon: <Calculator size={20} /> },
+    { path: '/painel/configuracoes', label: 'Configurações', icon: <Gear size={20} /> },
   ];
 
   const handleLogout = async () => {

@@ -1,4 +1,4 @@
-// pages/styleguide/sections/AccordionSection.tsx — CRM Dibracam
+// pages/styleguide/sections/AccordionSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Accordion } from '../../../components/ui/Accordion';
 

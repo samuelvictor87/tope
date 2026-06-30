@@ -1,38 +1,97 @@
 /* tabs.css */
 .tabs {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-24);
+  gap: var(--spacing-8);
 }
 
-.tabs-list {
-  display: flex;
-  border-bottom: 2px solid var(--color-grey-200);
-  gap: 0;
+/* Variante Underline */
+.tabs-underline {
+  border-bottom: 1px solid var(--color-grey-200);
+  width: 100%;
 }
 
-.tab-trigger {
-  padding: var(--spacing-8) var(--spacing-16);
+.tabs-underline .tab-item {
+  background: none;
+  border: none;
+  padding: var(--spacing-12) var(--spacing-16);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--color-grey-500);
   cursor: pointer;
-  border: none;
-  background: transparent;
   border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
+  margin-bottom: -1px;
   transition: color var(--transition-fast), border-color var(--transition-fast);
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
 }
 
-.tab-trigger:hover {
+.tabs-underline .tab-item:hover {
   color: var(--color-text);
 }
 
-.tab-trigger-active {
+.tabs-underline .tab-item.tab-active {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
 }
+
+/* Variante Pill */
+.tabs-pill {
+  background-color: var(--color-grey-100);
+  padding: var(--spacing-4);
+  border-radius: var(--radius-lg);
+  display: inline-flex;
+}
+
+.tabs-pill .tab-item {
+  background: none;
+  border: none;
+  padding: var(--spacing-8) var(--spacing-16);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-grey-600);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.tabs-pill .tab-item:hover {
+  color: var(--color-grey-900);
+}
+
+.tabs-pill .tab-item.tab-active {
+  background-color: var(--color-surface);
+  color: var(--color-grey-900);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Badges e Ícones genéricos nas abas */
+.tab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.tab-badge {
+  background-color: var(--color-grey-100);
+  color: var(--color-grey-600);
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-weight: var(--font-weight-semibold);
+}
+
+.tab-active .tab-badge {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
 
 /* drawer.css */
 .drawer-overlay {

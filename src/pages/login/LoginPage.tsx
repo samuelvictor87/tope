@@ -160,7 +160,7 @@ export function LoginPage() {
         {/* Informações para desenvolvimento e testes */}
         <div className="login-dev-hint">
           <strong>Acesso para Testes:</strong>
-          <span>E-mail: <code>samuelvictor87@hotmail.com</code> ou <code>pedro@dibracam.com.br</code></span>
+          <span>E-mail: <code>samuelvictor87@hotmail.com</code> ou <code>pedro@TOPE.com.br</code></span>
           <br />
           <span>Senha: <code>12345678</code></span>
         </div>

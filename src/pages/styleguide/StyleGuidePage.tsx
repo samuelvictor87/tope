@@ -1,4 +1,4 @@
-// pages/styleguide/StyleGuidePage.tsx — CRM Dibracam
+// pages/styleguide/StyleGuidePage.tsx — TOPE
 // Documentação visual do Design System — rota /styleguide
 import './styleguide.css';
 import { StyleGuideSidebar } from './StyleGuideSidebar';

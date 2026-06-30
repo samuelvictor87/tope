@@ -1,4 +1,4 @@
-// pages/styleguide/sections/TabsSection.tsx — CRM Dibracam
+// pages/styleguide/sections/TabsSection.tsx — TOPE
 import { useState } from 'react';
 import { StyleGuideSection, SubsectionTitle, Preview, CodeBlock } from '../StyleGuideSection';
 import { Tabs } from '../../../components/ui/Tabs';

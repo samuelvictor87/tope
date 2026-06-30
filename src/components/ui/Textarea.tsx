@@ -1,4 +1,4 @@
-// components/ui/Textarea.tsx — CRM Dibracam
+// components/ui/Textarea.tsx — TOPE
 import React from 'react';
 import '../../styles/components/textarea.css';
 

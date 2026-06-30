@@ -1,4 +1,4 @@
-// pages/styleguide/StyleGuideSection.tsx — CRM Dibracam
+// pages/styleguide/StyleGuideSection.tsx — TOPE
 import React from 'react';
 
 interface StyleGuideSectionProps {

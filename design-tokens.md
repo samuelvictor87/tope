@@ -1,4 +1,4 @@
-# 🎨 Design Tokens: Paleta Oficial de Cores - Dibracam
+# 🎨 Design Tokens: Paleta Oficial de Cores - TOPE
 
 Este documento serve como a **Fonte Única de Verdade (SSoT)** para todas as cores do sistema. Nenhuma cor deve ser aplicada de forma hardcoded; utilize sempre as variáveis CSS definidas em `src/styles/tokens.css`.
 

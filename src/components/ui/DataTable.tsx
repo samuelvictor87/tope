@@ -1,4 +1,4 @@
-// components/ui/DataTable.tsx — CRM Dibracam
+// components/ui/DataTable.tsx — TOPE
 import React from 'react';
 import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { EmptyState } from './EmptyState';

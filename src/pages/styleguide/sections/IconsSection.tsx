@@ -1,4 +1,4 @@
-// pages/styleguide/sections/IconsSection.tsx — CRM Dibracam
+// pages/styleguide/sections/IconsSection.tsx — TOPE
 import { StyleGuideSection, SubsectionTitle } from '../StyleGuideSection';
 import {
   House, ChartBar, Users, ChatCircle, Kanban, Target, Buildings,

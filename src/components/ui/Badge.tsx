@@ -1,4 +1,4 @@
-// components/ui/Badge.tsx — CRM Dibracam
+// components/ui/Badge.tsx — TOPE
 import React from 'react';
 import '../../styles/components/badge.css';
 

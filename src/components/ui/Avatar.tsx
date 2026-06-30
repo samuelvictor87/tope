@@ -1,4 +1,4 @@
-// components/ui/Avatar.tsx — CRM Dibracam
+// components/ui/Avatar.tsx — TOPE
 
 
 interface AvatarProps {
