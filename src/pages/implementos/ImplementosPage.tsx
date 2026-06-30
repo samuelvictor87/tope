@@ -121,7 +121,7 @@ export function ImplementosPage() {
   const loadFilterOptions = async () => {
     try {
       const { data: cats, error: err1 } = await supabase
-        .from('categorias')
+        .from('implemento_categorias')
         .select('id, nome')
         .order('nome');
       
@@ -146,7 +146,7 @@ export function ImplementosPage() {
     setLoading(true);
     try {
       let query = supabase
-        .from('categorias')
+        .from('implemento_categorias')
         .select(`
           *,
           atributos:atributos(nome)
@@ -188,7 +188,7 @@ export function ImplementosPage() {
         .from('atributos')
         .select(`
           *,
-          categoria:categorias(nome),
+          categoria:implemento_categorias(nome),
           opcoes:opcoes_atributos(nome)
         `, { count: 'exact' });
 
@@ -235,7 +235,7 @@ export function ImplementosPage() {
           *,
           atributo:atributos(
             nome,
-            categoria:categorias(id, nome)
+            categoria:implemento_categorias(id, nome)
           )
         `, { count: 'exact' });
 
@@ -365,7 +365,7 @@ export function ImplementosPage() {
       let catId = editingCategory?.id;
       if (editingCategory) {
         const { error } = await supabase
-          .from('categorias')
+          .from('implemento_categorias')
           .update({ nome: formCategoryName.trim() })
           .eq('id', editingCategory.id);
         if (error) {
@@ -374,7 +374,7 @@ export function ImplementosPage() {
         }
       } else {
         const { data, error } = await supabase
-          .from('categorias')
+          .from('implemento_categorias')
           .insert({ nome: formCategoryName.trim() })
           .select()
           .single();
@@ -559,7 +559,7 @@ export function ImplementosPage() {
     try {
       if (deleteTarget.type === 'categoria') {
         const { error } = await supabase
-          .from('categorias')
+          .from('implemento_categorias')
           .delete()
           .eq('id', deleteTarget.id);
         if (error) {

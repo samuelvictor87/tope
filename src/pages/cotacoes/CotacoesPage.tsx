@@ -6,9 +6,7 @@ import {
   Pencil, 
   Trash, 
   ChatCircleText, 
-  Funnel, 
-  PaperPlaneRight,
-  Eye
+  PaperPlaneRight
 } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -76,7 +74,7 @@ export function CotacoesPage() {
   const ITEMS_PER_PAGE = 10;
 
   // Filtros
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterVendedor, setFilterVendedor] = useState<OptionType | null>({ value: 'Todos', label: 'Vendedor (Todos)' });
@@ -320,7 +318,7 @@ export function CotacoesPage() {
       case 'Em avaliação':
         return <Badge variant="warning">Em avaliação</Badge>;
       case 'Em orçamento':
-        return <Badge variant="info">Em orçamento</Badge>;
+        return <Badge variant="primary">Em orçamento</Badge>;
       case 'Completo':
         return <Badge variant="success">Completo</Badge>;
       default:
@@ -362,7 +360,7 @@ export function CotacoesPage() {
             <Select
               options={vendedorFilterOptions}
               value={filterVendedor}
-              onChange={setFilterVendedor}
+              onChange={(opt) => setFilterVendedor(opt as OptionType | null)}
               placeholder="Vendedor"
             />
           </div>
@@ -375,7 +373,7 @@ export function CotacoesPage() {
                 { value: 'Completo', label: 'Completo' }
               ]}
               value={filterStatus}
-              onChange={setFilterStatus}
+              onChange={(opt) => setFilterStatus(opt as OptionType | null)}
               placeholder="Status"
             />
           </div>
@@ -396,7 +394,8 @@ export function CotacoesPage() {
             Nenhuma cotação encontrada.
           </div>
         ) : (
-          <table className="table">
+          <>
+            <table className="table">
             <thead>
               <tr>
                 <th style={{ width: '80px' }}>ID</th>
@@ -452,61 +451,25 @@ export function CotacoesPage() {
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                       <button
-                        className="btn-action"
+                        className="action-btn action-btn-edit"
                         onClick={() => handleCommentsClick(cotacao)}
                         title="Comentários e Histórico"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '6px',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--color-grey-500)',
-                          transition: 'background 0.2s',
-                        }}
                       >
-                        <ChatCircleText size={18} />
+                        <ChatCircleText size={16} />
                       </button>
                       <button
-                        className="btn-action"
+                        className="action-btn action-btn-edit"
                         onClick={() => navigate(`/painel/cotacoes/${cotacao.id}/editar`)}
                         title="Editar cotação"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '6px',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--color-grey-500)',
-                          transition: 'background 0.2s',
-                        }}
                       >
-                        <Pencil size={18} />
+                        <Pencil size={16} />
                       </button>
                       <button
-                        className="btn-action"
+                        className="action-btn action-btn-delete"
                         onClick={() => handleDeleteClick(cotacao)}
                         title="Excluir cotação"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '6px',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--color-error)',
-                          transition: 'background 0.2s',
-                        }}
                       >
-                        <Trash size={18} />
+                        <Trash size={16} />
                       </button>
                     </div>
                   </td>
@@ -514,20 +477,20 @@ export function CotacoesPage() {
               ))}
             </tbody>
           </table>
+          
+          {/* Paginação embutida na tabela */}
+          {!loading && totalCount > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalCount={totalCount}
+              itemsPerPage={ITEMS_PER_PAGE}
+              onPageChange={(page) => setCurrentPage(page)}
+              itemLabel="cotações"
+            />
+          )}
+        </>
         )}
       </div>
-
-      {/* Paginação */}
-      {!loading && totalCount > ITEMS_PER_PAGE && (
-        <div style={{ marginTop: 'var(--spacing-16)' }}>
-          <Pagination
-            currentPage={currentPage}
-            totalCount={totalCount}
-            pageSize={ITEMS_PER_PAGE}
-            onPageChange={setCurrentPage}
-          />
-        </div>
-      )}
 
       {/* Modal de Confirmação de Deleção */}
       <ConfirmModal

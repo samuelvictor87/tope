@@ -23,7 +23,8 @@ export function Pagination({
     setInputValue(String(currentPage));
   }, [currentPage]);
 
-  if (totalPages <= 1) {
+  // Se não houver itens cadastrados, não renderiza o rodapé de contagem/paginação
+  if (totalCount <= 0) {
     return null;
   }
 
@@ -71,62 +72,64 @@ export function Pagination({
         {totalCount.toLocaleString('pt-BR')} {totalCount === 1 ? itemLabel.replace(/s$/, '') : itemLabel}
       </span>
 
-      <div className="pagination-controls-container">
-        <div className="pagination-controls">
-          <button
-            className="pagination-arrow-btn"
-            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-            disabled={currentPage === 1}
-            title="Página Anterior"
-          >
-            <CaretLeft size={16} weight="bold" />
-          </button>
+      {totalPages > 1 && (
+        <div className="pagination-controls-container">
+          <div className="pagination-controls">
+            <button
+              className="pagination-arrow-btn"
+              onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              title="Página Anterior"
+            >
+              <CaretLeft size={16} weight="bold" />
+            </button>
 
-          {getPageNumbers().map((page, index) => {
-            if (page === '...') {
+            {getPageNumbers().map((page, index) => {
+              if (page === '...') {
+                return (
+                  <span key={`ellipsis-${index}`} className="pagination-ellipsis">
+                    ...
+                  </span>
+                );
+              }
+
+              const pageNum = page as number;
+              const isActive = pageNum === currentPage;
+
               return (
-                <span key={`ellipsis-${index}`} className="pagination-ellipsis">
-                  ...
-                </span>
+                <button
+                  key={`page-${pageNum}`}
+                  className={`pagination-num-btn ${isActive ? 'pagination-num-btn-active' : ''}`}
+                  onClick={() => onPageChange(pageNum)}
+                >
+                  {pageNum}
+                </button>
               );
-            }
+            })}
 
-            const pageNum = page as number;
-            const isActive = pageNum === currentPage;
+            <button
+              className="pagination-arrow-btn"
+              onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              title="Próxima Página"
+            >
+              <CaretRight size={16} weight="bold" />
+            </button>
+          </div>
 
-            return (
-              <button
-                key={`page-${pageNum}`}
-                className={`pagination-num-btn ${isActive ? 'pagination-num-btn-active' : ''}`}
-                onClick={() => onPageChange(pageNum)}
-              >
-                {pageNum}
-              </button>
-            );
-          })}
-
-          <button
-            className="pagination-arrow-btn"
-            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage === totalPages}
-            title="Próxima Página"
-          >
-            <CaretRight size={16} weight="bold" />
-          </button>
+          <div className="pagination-goto">
+            <span className="pagination-goto-label">Ir para:</span>
+            <input
+              type="text"
+              className="pagination-goto-input"
+              value={inputValue}
+              onChange={handleInputChange}
+              onBlur={handleInputSubmit}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
         </div>
-
-        <div className="pagination-goto">
-          <span className="pagination-goto-label">Ir para:</span>
-          <input
-            type="text"
-            className="pagination-goto-input"
-            value={inputValue}
-            onChange={handleInputChange}
-            onBlur={handleInputSubmit}
-            onKeyDown={handleKeyDown}
-          />
-        </div>
-      </div>
+      )}
     </div>
   );
 }

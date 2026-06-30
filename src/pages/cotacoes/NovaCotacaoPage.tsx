@@ -1,14 +1,20 @@
 // pages/cotacoes/NovaCotacaoPage.tsx — Form de Nova/Editar Cotação TOPE
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  FloppyDisk, 
-  Trash, 
-  Warning, 
+import {
+  ArrowLeft,
+  FloppyDisk,
+  Trash,
+  Warning,
   CheckCircle,
   FileArrowUp,
-  List
+  List,
+  Wrench,
+  Truck,
+  Copy,
+  Pencil,
+  Check,
+  X,
 } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -21,13 +27,22 @@ import { useToast } from '../../components/ui/Toast';
 import { FileUpload } from '../../components/ui/FileUpload';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { ItemImplementoModal } from './ItemImplementoModal';
+import type { ImplementoEscolha } from './ItemImplementoModal';
+import { ItemCaminhaoModal } from './ItemCaminhaoModal';
+import type { CaminhaoSelecionado } from './ItemCaminhaoModal';
 import '../../styles/components/cotacoes.css';
 
-// Interfaces locais
+// ─── Interfaces locais ────────────────────────────────────────────────────────
 interface ItemLocal {
+  tempId: string;
   id?: string;
   quantidade: number;
   descricao: string;
+  implementos: ImplementoEscolha[];
+  caminhao: CaminhaoSelecionado | null;
+  editandoDescricao?: boolean;
+  descricaoEditTemp?: string;
 }
 
 interface AnexoSalvo {
@@ -50,7 +65,7 @@ const PRAZO_OPTIONS = [
   { value: '84', label: '84' }
 ];
 
-// Helpers de Máscara e Validação de CNPJ
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 const maskCNPJ = (val: string) => {
   const digits = val.replace(/\D/g, '').slice(0, 14);
   let masked = digits;
@@ -91,11 +106,21 @@ const validarCNPJ = (cnpj: string): boolean => {
   }
 
   resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
-  if (resultado !== parseInt(digitos.charAt(1))) return false;
-
-  return true;
+  return resultado === parseInt(digitos.charAt(1));
 };
 
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
+const gerarTempId = () => `temp-${Date.now()}-${Math.random()}`;
+
+// ─── Componente principal ─────────────────────────────────────────────────────
 export function NovaCotacaoPage() {
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
@@ -103,14 +128,14 @@ export function NovaCotacaoPage() {
   const toast = useToast();
   const { user, profile } = useAuth();
 
-  // Estados do Formulário principal
+  // ── Estados do Formulário principal ─────────────────────────────────────────
   const [formCNPJ, setFormCNPJ] = useState('');
   const [formRazaoSocial, setFormRazaoSocial] = useState('');
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [isClienteCadastrado, setIsClienteCadastrado] = useState(false);
   const [buscandoCNPJ, setBuscandoCNPJ] = useState(false);
 
-  const [prazos, setPrazos] = useState<number[]>([60]); // Padrão: 60 meses
+  const [prazos, setPrazos] = useState<number[]>([60]);
   const [estimativaRodagem, setEstimativaRodagem] = useState('5000');
   const [tipoPlaca, setTipoPlaca] = useState<OptionType | null>({ value: 'Comum', label: 'Comum' });
   const [descricao, setDescricao] = useState('');
@@ -118,22 +143,29 @@ export function NovaCotacaoPage() {
   const [status, setStatus] = useState<OptionType | null>({ value: 'Em avaliação', label: 'Em avaliação' });
   const [vendedor, setVendedor] = useState<OptionType | null>(null);
 
-  // Tabelas auxiliares
+  // ── Tabelas auxiliares ───────────────────────────────────────────────────────
   const [vendedorOptions, setVendedorOptions] = useState<OptionType[]>([]);
 
-  // Itens da cotação
+  // ── Itens da cotação ─────────────────────────────────────────────────────────
   const [itens, setItens] = useState<ItemLocal[]>([]);
+  const [novaQtd, setNovaQtd] = useState(1);
+  const [novaDescricao, setNovaDescricao] = useState('');
 
-  // Arquivos / Anexos
+  // ── Modais de Item ───────────────────────────────────────────────────────────
+  const [implementoModalOpen, setImplementoModalOpen] = useState(false);
+  const [caminhaoModalOpen, setCaminhaoModalOpen] = useState(false);
+  const [itemAtivo, setItemAtivo] = useState<string | null>(null); // tempId
+
+  // ── Arquivos / Anexos ────────────────────────────────────────────────────────
   const [novosArquivos, setNovosArquivos] = useState<File[]>([]);
   const [anexosSalvos, setAnexosSalvos] = useState<AnexoSalvo[]>([]);
   const [anexosDeletarIds, setAnexosDeletarIds] = useState<AnexoSalvo[]>([]);
 
-  // Loadings
+  // ── Loadings ─────────────────────────────────────────────────────────────────
   const [loadingData, setLoadingData] = useState(isEditMode);
   const [saving, setSaving] = useState(false);
 
-  // 1. Carrega vendedores do banco
+  // ── 1. Carrega vendedores ────────────────────────────────────────────────────
   useEffect(() => {
     async function loadVendedores() {
       try {
@@ -145,7 +177,6 @@ export function NovaCotacaoPage() {
         if (vts) {
           const opts = vts.map(u => ({ value: u.id, label: u.nome_completo }));
           setVendedorOptions(opts);
-          
           if (!isEditMode && profile && (profile.perfil === 'vendedor' || profile.perfil === 'administrador')) {
             setVendedor({ value: profile.id, label: profile.nome_completo });
           }
@@ -157,13 +188,12 @@ export function NovaCotacaoPage() {
     loadVendedores();
   }, [isEditMode, profile]);
 
-  // 2. Carregar Cotação Existente (Edição)
+  // ── 2. Carregar Cotação Existente (Edição) ───────────────────────────────────
   useEffect(() => {
     async function loadCotacao() {
       if (!isEditMode || !id) return;
       setLoadingData(true);
       try {
-        // Cotação Principal
         const { data: cot, error: errC } = await supabase
           .from('cotacoes')
           .select('*, vendedor:usuarios(id, nome_completo)')
@@ -176,7 +206,6 @@ export function NovaCotacaoPage() {
           return;
         }
 
-        // Setar campos simples
         setFormCNPJ(maskCNPJ(cot.cnpj));
         setFormRazaoSocial(cot.razao_social);
         setClienteId(cot.cliente_id);
@@ -196,22 +225,29 @@ export function NovaCotacaoPage() {
           .from('cotacao_anexos')
           .select('*')
           .eq('cotacao_id', id);
-        if (anxs) {
-          setAnexosSalvos(anxs);
-        }
+        if (anxs) setAnexosSalvos(anxs);
 
-        // Carregar Itens da cotação
+        // Carregar Itens
         if (cot.detalhamento_ativo) {
           const { data: its } = await supabase
             .from('cotacao_itens')
-            .select('*')
-            .eq('cotacao_id', id);
-          
+            .select('*, caminhao:caminhoes(id, modelo, familia)')
+            .eq('cotacao_id', id)
+            .order('criado_em');
+
           if (its) {
             const mappedItens: ItemLocal[] = its.map((item: any) => ({
+              tempId: gerarTempId(),
               id: item.id,
               quantidade: item.quantidade,
-              descricao: item.descricao || ''
+              descricao: item.descricao || '',
+              implementos: item.implementos || [],
+              caminhao: item.caminhao_id ? {
+                caminhao_id: item.caminhao_id,
+                caminhao_entre_eixo: item.caminhao_entre_eixo || '',
+                caminhao_modelo: item.caminhao?.modelo || '',
+                caminhao_familia: item.caminhao?.familia || '',
+              } : null,
             }));
             setItens(mappedItens);
           }
@@ -225,11 +261,10 @@ export function NovaCotacaoPage() {
     loadCotacao();
   }, [isEditMode, id, navigate, toast]);
 
-  // 3. Busca CNPJ no Supabase ou BrasilAPI
+  // ── 3. Busca CNPJ ────────────────────────────────────────────────────────────
   const handleCNPJBlur = async () => {
     const clean = formCNPJ.replace(/\D/g, '');
     if (clean.length !== 14) return;
-    
     if (!validarCNPJ(clean)) {
       toast.error('CNPJ Inválido', 'O CNPJ informado não possui formato ou dígitos verificadores válidos.');
       return;
@@ -251,7 +286,6 @@ export function NovaCotacaoPage() {
       } else {
         setIsClienteCadastrado(false);
         setClienteId(null);
-        
         const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`);
         if (res.ok) {
           const apiData = await res.json();
@@ -274,36 +308,84 @@ export function NovaCotacaoPage() {
     setFormCNPJ(maskCNPJ(e.target.value));
   };
 
-  // Itens: Adicionar
-  const handleAddItem = () => {
+  // ── Handlers de Itens ────────────────────────────────────────────────────────
+  const handleAdicionarItem = () => {
+    if (!novaDescricao.trim()) {
+      toast.warning('Descrição obrigatória', 'Preencha a descrição do item antes de adicionar.');
+      return;
+    }
     const novoItem: ItemLocal = {
-      quantidade: 1,
-      descricao: ''
+      tempId: gerarTempId(),
+      quantidade: novaQtd,
+      descricao: novaDescricao.trim(),
+      implementos: [],
+      caminhao: null,
     };
     setItens(prev => [...prev, novoItem]);
+    setNovaQtd(1);
+    setNovaDescricao('');
   };
 
-  // Itens: Remover
-  const handleRemoveItem = (index: number) => {
-    setItens(prev => prev.filter((_, i) => i !== index));
+  const handleRemoverItem = (tempId: string) => {
+    setItens(prev => prev.filter(i => i.tempId !== tempId));
   };
 
-  // Itens: Alterar campos simples
-  const handleItemFieldChange = (index: number, field: keyof ItemLocal, val: any) => {
-    setItens(prev => {
-      const clone = [...prev];
-      clone[index] = { ...clone[index], [field]: val };
-      return clone;
-    });
+  const handleDuplicarItem = (tempId: string) => {
+    const item = itens.find(i => i.tempId === tempId);
+    if (!item) return;
+    setItens(prev => [...prev, { ...item, tempId: gerarTempId(), id: undefined }]);
   };
 
-  // Anexos: Remover Anexo já salvo
+  const handleIniciarEdicaoDescricao = (tempId: string) => {
+    setItens(prev => prev.map(i =>
+      i.tempId === tempId ? { ...i, editandoDescricao: true, descricaoEditTemp: i.descricao } : i
+    ));
+  };
+
+  const handleSalvarDescricao = (tempId: string) => {
+    setItens(prev => prev.map(i =>
+      i.tempId === tempId ? { ...i, descricao: i.descricaoEditTemp || i.descricao, editandoDescricao: false } : i
+    ));
+  };
+
+  const handleCancelarEdicaoDescricao = (tempId: string) => {
+    setItens(prev => prev.map(i =>
+      i.tempId === tempId ? { ...i, editandoDescricao: false } : i
+    ));
+  };
+
+  // ── Abre modais de implemento e caminhão ─────────────────────────────────────
+  const handleAbrirImplemento = (tempId: string) => {
+    setItemAtivo(tempId);
+    setImplementoModalOpen(true);
+  };
+
+  const handleAbrirCaminhao = (tempId: string) => {
+    setItemAtivo(tempId);
+    setCaminhaoModalOpen(true);
+  };
+
+  const handleSalvarImplemento = (implementos: ImplementoEscolha[]) => {
+    if (!itemAtivo) return;
+    setItens(prev => prev.map(i =>
+      i.tempId === itemAtivo ? { ...i, implementos } : i
+    ));
+  };
+
+  const handleSalvarCaminhao = (caminhao: CaminhaoSelecionado) => {
+    if (!itemAtivo) return;
+    setItens(prev => prev.map(i =>
+      i.tempId === itemAtivo ? { ...i, caminhao } : i
+    ));
+  };
+
+  // ── Anexos ──────────────────────────────────────────────────────────────────
   const handleRemoveAnexoSalvo = (anexo: AnexoSalvo) => {
     setAnexosSalvos(prev => prev.filter(a => a.id !== anexo.id));
     setAnexosDeletarIds(prev => [...prev, anexo]);
   };
 
-  // Salvar Formulário
+  // ── Salvar Formulário ────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -322,12 +404,6 @@ export function NovaCotacaoPage() {
         toast.error('Itens da cotação', 'Você ativou a seção de itens, por isso precisa adicionar pelo menos um item.');
         return;
       }
-
-      const incompleto = itens.some(i => !i.descricao.trim());
-      if (incompleto) {
-        toast.error('Itens incompletos', 'Por favor, preencha a descrição de todos os itens.');
-        return;
-      }
     }
 
     setSaving(true);
@@ -337,17 +413,10 @@ export function NovaCotacaoPage() {
       if (!currentClienteId) {
         const { data: newClient, error: clientErr } = await supabase
           .from('clientes')
-          .insert({
-            cnpj: formCNPJ,
-            razao_social: formRazaoSocial,
-            vendedor_id: vendedor?.value || null
-          })
+          .insert({ cnpj: formCNPJ, razao_social: formRazaoSocial, vendedor_id: vendedor?.value || null })
           .select('id')
           .single();
-
-        if (clientErr || !newClient) {
-          throw new Error(`Erro ao cadastrar cliente automaticamente: ${clientErr?.message}`);
-        }
+        if (clientErr || !newClient) throw new Error(`Erro ao cadastrar cliente: ${clientErr?.message}`);
         currentClienteId = newClient.id;
       }
 
@@ -362,86 +431,64 @@ export function NovaCotacaoPage() {
         descricao: descricao || null,
         detalhamento_ativo: detalhamentoAtivo,
         status: status?.value as 'Em avaliação' | 'Em orçamento' | 'Completo',
-        criado_por: user?.id || null
+        criado_por: user?.id || null,
       };
 
       let activeCotacaoId = id;
 
       if (isEditMode && id) {
-        const { error: updErr } = await supabase
-          .from('cotacoes')
-          .update(cotacaoPayload)
-          .eq('id', id);
-
+        const { error: updErr } = await supabase.from('cotacoes').update(cotacaoPayload).eq('id', id);
         if (updErr) throw updErr;
       } else {
-        const { data: newCot, error: insErr } = await supabase
-          .from('cotacoes')
-          .insert(cotacaoPayload)
-          .select('id')
-          .single();
-
+        const { data: newCot, error: insErr } = await supabase.from('cotacoes').insert(cotacaoPayload).select('id').single();
         if (insErr || !newCot) throw insErr || new Error('Não foi possível registrar a nova cotação.');
         activeCotacaoId = newCot.id;
       }
 
       const safeCotacaoId = activeCotacaoId as string;
 
-      // 3. Gravar itens (deleta anteriores e reinsere se ativo)
+      // Gravar itens
       if (detalhamentoAtivo) {
-        const { error: delErr } = await supabase
-          .from('cotacao_itens')
-          .delete()
-          .eq('cotacao_id', safeCotacaoId);
-        if (delErr) throw delErr;
+        await supabase.from('cotacao_itens').delete().eq('cotacao_id', safeCotacaoId);
 
         const itensPayload = itens.map(item => ({
           cotacao_id: safeCotacaoId,
           quantidade: item.quantidade,
-          descricao: item.descricao
+          descricao: item.descricao,
+          implementos: item.implementos,
+          caminhao_id: item.caminhao?.caminhao_id || null,
+          caminhao_entre_eixo: item.caminhao?.caminhao_entre_eixo || null,
         }));
 
-        const { error: insItensErr } = await supabase
-          .from('cotacao_itens')
-          .insert(itensPayload);
+        const { error: insItensErr } = await supabase.from('cotacao_itens').insert(itensPayload);
         if (insItensErr) throw insItensErr;
       } else {
         await supabase.from('cotacao_itens').delete().eq('cotacao_id', safeCotacaoId);
       }
 
-      // 4. Upload de novos anexos
+      // Upload de novos anexos
       if (novosArquivos.length > 0) {
         for (const file of novosArquivos) {
           const path = `cotacoes/${safeCotacaoId}/${Date.now()}_${file.name}`;
-          const { error: uploadErr } = await supabase.storage
-            .from('cotacoes-anexos')
-            .upload(path, file);
-
+          const { error: uploadErr } = await supabase.storage.from('cotacoes-anexos').upload(path, file);
           if (uploadErr) {
-            console.error('Erro de upload:', uploadErr);
             toast.warning('Aviso de upload', `Não foi possível enviar o anexo ${file.name}.`);
             continue;
           }
-
-          const { data: { publicUrl } } = supabase.storage
-            .from('cotacoes-anexos')
-            .getPublicUrl(path);
-
-          await supabase
-            .from('cotacao_anexos')
-            .insert({
-              cotacao_id: safeCotacaoId,
-              criado_por: user?.id || null,
-              arquivo_nome: file.name,
-              arquivo_url: publicUrl,
-              arquivo_path: path,
-              mime_type: file.type || 'application/octet-stream',
-              tamanho_bytes: file.size
-            });
+          const { data: { publicUrl } } = supabase.storage.from('cotacoes-anexos').getPublicUrl(path);
+          await supabase.from('cotacao_anexos').insert({
+            cotacao_id: safeCotacaoId,
+            criado_por: user?.id || null,
+            arquivo_nome: file.name,
+            arquivo_url: publicUrl,
+            arquivo_path: path,
+            mime_type: file.type || 'application/octet-stream',
+            tamanho_bytes: file.size,
+          });
         }
       }
 
-      // 5. Excluir anexos removidos
+      // Excluir anexos removidos
       if (anexosDeletarIds.length > 0) {
         for (const anexo of anexosDeletarIds) {
           await supabase.from('cotacao_anexos').delete().eq('id', anexo.id);
@@ -454,7 +501,6 @@ export function NovaCotacaoPage() {
         `A cotação para ${formRazaoSocial} foi salva com sucesso!`
       );
       navigate('/painel/cotacoes');
-
     } catch (err: any) {
       toast.error('Erro ao salvar cotação', err.message || 'Ocorreu um erro ao persistir os dados.');
     } finally {
@@ -462,15 +508,29 @@ export function NovaCotacaoPage() {
     }
   };
 
-  const formatBytes = (bytes: number, decimals = 2) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  // ── Renderizar badges de implementos ─────────────────────────────────────────
+  const renderImplementoBadges = (implementos: ImplementoEscolha[]) => {
+    if (!implementos || implementos.length === 0) return null;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
+        {implementos.map((impl, i) => {
+          const opcoes = impl.atributos.map(a => a.opcao_nome).filter(Boolean).join(', ');
+          return (
+            <span key={i} style={{
+              display: 'inline-block', fontSize: '11px', fontWeight: 500,
+              padding: '2px 8px', borderRadius: '4px',
+              backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0',
+              color: 'var(--color-grey-700)',
+            }}>
+              {impl.categoria_nome}{opcoes ? ` (${opcoes})` : ''}
+            </span>
+          );
+        })}
+      </div>
+    );
   };
 
+  // ── Loading ─────────────────────────────────────────────────────────────────
   if (loadingData) {
     return (
       <DashboardLayout pageTitle="Carregando..." pageSubtitle="Buscando informações da cotação.">
@@ -481,19 +541,18 @@ export function NovaCotacaoPage() {
     );
   }
 
+  // ── Item em edição ativo ─────────────────────────────────────────────────────
+  const itemAtivoObj = itens.find(i => i.tempId === itemAtivo) || null;
+
   return (
-    <DashboardLayout 
-      pageTitle={isEditMode ? 'Editar cotação' : 'Nova cotação'} 
+    <DashboardLayout
+      pageTitle={isEditMode ? 'Editar cotação' : 'Nova cotação'}
       pageSubtitle={isEditMode ? 'Modifique os parâmetros desta cotação.' : 'Forneça os detalhes para criar uma cotação.'}
     >
       <form onSubmit={handleSubmit} className="cotacao-form-container">
         {/* Cabeçalho de Ações */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Button 
-            type="button" 
-            variant="secondary" 
-            onClick={() => navigate('/painel/cotacoes')}
-          >
+          <Button type="button" variant="secondary" onClick={() => navigate('/painel/cotacoes')}>
             <ArrowLeft size={18} style={{ marginRight: '6px' }} />
             Cancelar
           </Button>
@@ -507,16 +566,12 @@ export function NovaCotacaoPage() {
                     { value: 'Completo', label: 'Completo' }
                   ]}
                   value={status}
-                  onChange={setStatus}
+                  onChange={(opt) => setStatus(opt as OptionType | null)}
                   placeholder="Status"
                 />
               </div>
             )}
-            <Button 
-              type="submit" 
-              variant="primary" 
-              loading={saving}
-            >
+            <Button type="submit" variant="primary" loading={saving}>
               <FloppyDisk size={18} style={{ marginRight: '6px' }} />
               Salvar Cotação
             </Button>
@@ -604,12 +659,11 @@ export function NovaCotacaoPage() {
                   { value: 'ANTT', label: 'ANTT' }
                 ]}
                 value={tipoPlaca}
-                onChange={setTipoPlaca}
+                onChange={(opt) => setTipoPlaca(opt as OptionType | null)}
                 placeholder="Selecione..."
               />
             </div>
           </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
             <div>
               <Textarea
@@ -625,7 +679,7 @@ export function NovaCotacaoPage() {
                 label="Vendedor Responsável"
                 options={vendedorOptions}
                 value={vendedor}
-                onChange={setVendedor}
+                onChange={(opt) => setVendedor(opt as OptionType | null)}
                 placeholder="Escolha o vendedor..."
               />
             </div>
@@ -634,167 +688,246 @@ export function NovaCotacaoPage() {
 
         {/* 3. ITENS DA COTAÇÃO */}
         <div className="cotacao-card">
-          <div className="detalhamento-toggle-row" style={{ marginBottom: detalhamentoAtivo ? '16px' : '0' }}>
+          {/* Toggle de detalhamento */}
+          <div className="detalhamento-toggle-row" style={{ marginBottom: detalhamentoAtivo ? '20px' : '0' }}>
             <div className="detalhamento-toggle-info">
               <h4>Detalhamento dos Itens da Locação</h4>
               <p>Ative caso queira especificar os modelos de caminhões e categorias de implementos.</p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center' }}>
-              <label 
+              <label
                 htmlFor="detalhamento-checkbox"
-                style={{
-                  position: 'relative',
-                  display: 'inline-block',
-                  width: '44px',
-                  height: '24px',
-                  cursor: 'pointer'
-                }}
+                style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px', cursor: 'pointer' }}
               >
                 <input
                   type="checkbox"
                   id="detalhamento-checkbox"
                   checked={detalhamentoAtivo}
                   onChange={(e) => {
-                    const val = e.target.checked;
-                    setDetalhamentoAtivo(val);
-                    if (val && itens.length === 0) {
-                      handleAddItem(); // adiciona um item vazio por padrão ao ativar
-                    }
+                    setDetalhamentoAtivo(e.target.checked);
                   }}
-                  style={{
-                    opacity: 0,
-                    width: 0,
-                    height: 0,
-                    position: 'absolute'
-                  }}
+                  style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }}
                 />
-                <span 
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: detalhamentoAtivo ? 'var(--color-primary)' : 'var(--color-grey-300)',
-                    borderRadius: '24px',
-                    transition: 'background-color 0.2s',
-                  }}
-                />
-                <span 
-                  style={{
-                    position: 'absolute',
-                    top: '2px',
-                    left: detalhamentoAtivo ? '22px' : '2px',
-                    width: '20px',
-                    height: '20px',
-                    borderRadius: '50%',
-                    backgroundColor: '#ffffff',
-                    transition: 'left 0.2s',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.15)'
-                  }}
-                />
+                <span style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                  backgroundColor: detalhamentoAtivo ? 'var(--color-primary)' : 'var(--color-grey-300)',
+                  borderRadius: '24px', transition: 'background-color 0.2s',
+                }} />
+                <span style={{
+                  position: 'absolute', top: '2px',
+                  left: detalhamentoAtivo ? '22px' : '2px',
+                  width: '20px', height: '20px',
+                  borderRadius: '50%', backgroundColor: '#ffffff',
+                  transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                }} />
               </label>
             </div>
           </div>
 
           {detalhamentoAtivo && (
-            <div style={{
-              backgroundColor: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--spacing-20)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--spacing-16)'
-            }}>
-              {/* Cabeçalho da Seção de Itens (Ícone, Título e Subtítulo conforme imagem) */}
-              <div style={{ display: 'flex', gap: 'var(--spacing-12)', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: 'var(--spacing-12)', marginBottom: 'var(--spacing-4)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Cabeçalho de itens */}
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
                 <div style={{
-                  padding: '6px',
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 'var(--radius-sm)',
-                  color: 'var(--color-grey-500)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
+                  padding: '6px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0',
+                  borderRadius: 'var(--radius-sm)', color: 'var(--color-grey-500)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   <List size={20} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <h4 style={{ margin: 0, fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-grey-900)' }}>Itens da cotação</h4>
+                  <h4 style={{ margin: 0, fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-grey-900)' }}>
+                    Itens da cotação
+                  </h4>
                   <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--color-grey-500)' }}>
-                    Adicione ou utilize os itens da cotação informados pelo vendedor e associe aos implementos necessários.
+                    Adicione os itens da cotação informados pelo vendedor e associe aos implementos necessários.
                   </p>
                 </div>
               </div>
 
-              {/* Lista de Itens (Quantidade e Descrição) */}
-              {itens.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <div style={{ width: '100px' }}>
-                    <Input
-                      type="number"
-                      placeholder="Quantidade"
-                      value={item.quantidade}
-                      onChange={(e) => handleItemFieldChange(idx, 'quantidade', parseInt(e.target.value) || 1)}
-                      min={1}
-                      required
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <Input
-                      type="text"
-                      placeholder="Descrição"
-                      value={item.descricao}
-                      onChange={(e) => handleItemFieldChange(idx, 'descricao', e.target.value)}
-                      required
-                    />
-                  </div>
-                  {itens.length > 1 && (
-                    <button
-                      type="button"
-                      className="btn-remover-item"
-                      onClick={() => handleRemoveItem(idx)}
-                      title="Remover Item"
-                      style={{ padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Trash size={18} />
-                    </button>
-                  )}
+              {/* Input de inclusão rápida */}
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', backgroundColor: '#f8fafc', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid #e2e8f0' }}>
+                <div style={{ width: '90px' }}>
+                  <Input
+                    label="Qtd"
+                    type="number"
+                    placeholder="1"
+                    value={novaQtd}
+                    onChange={(e) => setNovaQtd(parseInt(e.target.value) || 1)}
+                    min={1}
+                  />
                 </div>
-              ))}
-
-              {/* Botão Adicionar Item (Imitando checkbox como na imagem) */}
-              <div>
-                <button
-                  type="button"
-                  onClick={handleAddItem}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--color-primary)',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                    fontSize: 'var(--font-size-sm)',
-                    padding: '8px 0',
-                    outline: 'none'
-                  }}
-                >
-                  <span style={{
-                    width: '16px',
-                    height: '16px',
-                    border: '1.5px solid var(--color-primary)',
-                    borderRadius: '3px',
-                    display: 'inline-block',
-                    flexShrink: 0
-                  }} />
-                  Adicionar item
-                </button>
+                <div style={{ flex: 1 }}>
+                  <Input
+                    label="Descrição"
+                    type="text"
+                    placeholder="Descreva o item da cotação..."
+                    value={novaDescricao}
+                    onChange={(e) => setNovaDescricao(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdicionarItem(); } }}
+                  />
+                </div>
+                <div style={{ paddingBottom: '1px' }}>
+                  <button
+                    type="button"
+                    onClick={handleAdicionarItem}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      background: 'none', border: 'none', color: 'var(--color-primary)',
+                      cursor: 'pointer', fontWeight: 600, fontSize: 'var(--font-size-sm)',
+                      padding: '10px 4px', outline: 'none', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <span style={{
+                      width: '16px', height: '16px', border: '1.5px solid var(--color-primary)',
+                      borderRadius: '3px', display: 'inline-block', flexShrink: 0,
+                    }} />
+                    Adicionar item
+                  </button>
+                </div>
               </div>
+
+              {/* Tabela de itens */}
+              {itens.length > 0 && (
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ backgroundColor: '#f8fafc' }}>
+                      <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-600)', width: '60px' }}>Qtde</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-600)' }}>Item cotação</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--color-primary)', width: '220px' }}>Implemento</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-600)', width: '200px' }}>Caminhão</th>
+                        <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-600)', width: '100px' }}>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itens.map((item, idx) => (
+                        <tr key={item.tempId} style={{ borderBottom: idx < itens.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                          {/* Qtde */}
+                          <td style={{ textAlign: 'center', padding: '12px', fontSize: '14px', fontWeight: 600, color: 'var(--color-grey-800)' }}>
+                            {item.quantidade}
+                          </td>
+
+                          {/* Descrição */}
+                          <td style={{ padding: '12px' }}>
+                            {item.editandoDescricao ? (
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <input
+                                  type="text"
+                                  value={item.descricaoEditTemp || ''}
+                                  onChange={e => setItens(prev => prev.map(i =>
+                                    i.tempId === item.tempId ? { ...i, descricaoEditTemp: e.target.value } : i
+                                  ))}
+                                  onKeyDown={e => { if (e.key === 'Enter') handleSalvarDescricao(item.tempId); if (e.key === 'Escape') handleCancelarEdicaoDescricao(item.tempId); }}
+                                  autoFocus
+                                  style={{
+                                    flex: 1, padding: '6px 10px', border: '1px solid var(--color-primary)',
+                                    borderRadius: 'var(--radius-sm)', fontSize: '13px', outline: 'none',
+                                  }}
+                                />
+                                <button type="button" onClick={() => handleSalvarDescricao(item.tempId)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', padding: '4px' }}>
+                                  <Check size={16} />
+                                </button>
+                                <button type="button" onClick={() => handleCancelarEdicaoDescricao(item.tempId)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-grey-500)', padding: '4px' }}>
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div>
+                                <button type="button" onClick={() => handleIniciarEdicaoDescricao(item.tempId)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-grey-400)', padding: '0 6px 0 0', verticalAlign: 'middle' }}>
+                                  <Pencil size={14} />
+                                </button>
+                                <span style={{ fontSize: '13px', color: 'var(--color-grey-800)' }}>{item.descricao}</span>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Implemento */}
+                          <td style={{ padding: '12px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAbrirImplemento(item.tempId)}
+                                  title="Definir implementos"
+                                  style={{
+                                    padding: '5px', border: '1px solid #e2e8f0',
+                                    borderRadius: 'var(--radius-sm)', backgroundColor: '#fff',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                    color: item.implementos?.length > 0 ? 'var(--color-primary)' : 'var(--color-grey-500)',
+                                  }}
+                                >
+                                  <Wrench size={15} />
+                                </button>
+                              </div>
+                              {renderImplementoBadges(item.implementos)}
+                            </div>
+                          </td>
+
+                          {/* Caminhão */}
+                          <td style={{ padding: '12px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAbrirCaminhao(item.tempId)}
+                                  title="Definir caminhão"
+                                  style={{
+                                    padding: '5px', border: '1px solid #e2e8f0',
+                                    borderRadius: 'var(--radius-sm)', backgroundColor: '#fff',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                    color: item.caminhao ? 'var(--color-primary)' : 'var(--color-grey-500)',
+                                  }}
+                                >
+                                  <Truck size={15} />
+                                </button>
+                              </div>
+                              {item.caminhao && (
+                                <span style={{
+                                  display: 'inline-block', fontSize: '11px', fontWeight: 500,
+                                  padding: '2px 8px', borderRadius: '4px', whiteSpace: 'nowrap',
+                                  backgroundColor: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)',
+                                  color: 'var(--color-primary)',
+                                }}>
+                                  {item.caminhao.caminhao_familia
+                                    ? `${item.caminhao.caminhao_familia} - ${item.caminhao.caminhao_modelo}`
+                                    : item.caminhao.caminhao_modelo || item.caminhao.caminhao_id}
+                                  {item.caminhao.caminhao_entre_eixo ? ` (entre-eixo: ${item.caminhao.caminhao_entre_eixo})` : ''}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Ações */}
+                          <td style={{ padding: '12px', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicarItem(item.tempId)}
+                                title="Duplicar item"
+                                className="action-btn"
+                              >
+                                <Copy size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoverItem(item.tempId)}
+                                title="Excluir item"
+                                className="action-btn action-btn-delete"
+                              >
+                                <Trash size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -822,7 +955,8 @@ export function NovaCotacaoPage() {
                   <div key={anexo.id} className="anexo-item">
                     <div className="anexo-info">
                       <List size={16} style={{ color: 'var(--color-primary)' }} />
-                      <a href={anexo.arquivo_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-grey-700)', textDecoration: 'none', fontWeight: 500 }}>
+                      <a href={anexo.arquivo_url} target="_blank" rel="noopener noreferrer"
+                        style={{ color: 'var(--color-grey-700)', textDecoration: 'none', fontWeight: 500 }}>
                         {anexo.arquivo_nome}
                       </a>
                       <span className="anexo-size">({formatBytes(anexo.tamanho_bytes)})</span>
@@ -842,6 +976,24 @@ export function NovaCotacaoPage() {
           )}
         </div>
       </form>
+
+      {/* Modal de Implementos */}
+      <ItemImplementoModal
+        isOpen={implementoModalOpen}
+        onClose={() => { setImplementoModalOpen(false); setItemAtivo(null); }}
+        onSave={handleSalvarImplemento}
+        itemDescricao={itemAtivoObj?.descricao || ''}
+        implementosIniciais={itemAtivoObj?.implementos || []}
+      />
+
+      {/* Modal de Caminhão */}
+      <ItemCaminhaoModal
+        isOpen={caminhaoModalOpen}
+        onClose={() => { setCaminhaoModalOpen(false); setItemAtivo(null); }}
+        onSave={handleSalvarCaminhao}
+        implementos={itemAtivoObj?.implementos || []}
+        caminhaoInicial={itemAtivoObj?.caminhao || null}
+      />
     </DashboardLayout>
   );
 }

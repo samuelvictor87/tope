@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { useToast } from '../../components/ui/Toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { Pagination } from '../../components/ui/Pagination';
 import { supabase } from '../../lib/supabase';
 import '../../styles/components/usuarios.css';
 import '../../styles/components/table.css';
@@ -371,6 +372,17 @@ export function UsuariosPage() {
             )}
           </tbody>
         </table>
+
+        {/* Quantidade de usuários no rodapé */}
+        {!loading && filteredUsers.length > 0 && (
+          <Pagination
+            currentPage={1}
+            totalCount={filteredUsers.length}
+            itemsPerPage={100}
+            onPageChange={() => {}}
+            itemLabel="usuários"
+          />
+        )}
       </div>
 
       {/* Drawer Lateral de Cadastro / Edição */}

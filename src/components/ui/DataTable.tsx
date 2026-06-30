@@ -1,8 +1,8 @@
 // components/ui/DataTable.tsx — TOPE
 import React from 'react';
-import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
+import { Pagination } from './Pagination';
 import '../../styles/components/table.css';
 
 export interface Column<T = any> {
@@ -21,23 +21,21 @@ export interface ActionConfig<T = any> {
   hidden?: (row: T) => boolean;
 }
 
-interface PaginationConfig {
-  page: number;
-  pageSize: number;
-  total: number;
-  onPageChange: (page: number) => void;
-}
-
 interface DataTableProps<T = any> {
   columns: Column<T>[];
   data: T[];
   loading?: boolean;
   emptyMessage?: string;
-  pagination?: PaginationConfig;
   onRowClick?: (row: T) => void;
   actions?: ActionConfig<T>[];
   rowHighlight?: (row: T) => string | null;
   className?: string;
+  // Props de paginação robusta embutida no rodapé
+  currentPage?: number;
+  totalCount?: number;
+  itemsPerPage?: number;
+  onPageChange?: (page: number) => void;
+  itemLabel?: string;
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -45,11 +43,15 @@ export function DataTable<T extends Record<string, any>>({
   data,
   loading = false,
   emptyMessage = 'Nenhum dado encontrado',
-  pagination,
   onRowClick,
   actions,
   rowHighlight,
   className = '',
+  currentPage,
+  totalCount,
+  itemsPerPage,
+  onPageChange,
+  itemLabel,
 }: DataTableProps<T>) {
   if (loading) {
     return <LoadingState message="Carregando dados..." />;
@@ -58,8 +60,6 @@ export function DataTable<T extends Record<string, any>>({
   if (!data || data.length === 0) {
     return <EmptyState title={emptyMessage} />;
   }
-
-  const totalPages = pagination ? Math.ceil(pagination.total / pagination.pageSize) : 1;
 
   return (
     <div className={`table-container ${className}`}>
@@ -102,10 +102,14 @@ export function DataTable<T extends Record<string, any>>({
                       <div className="table-actions">
                         {actions.map((action, i) => {
                           if (action.hidden?.(row)) return null;
+                          const isDelete = action.label.toLowerCase() === 'excluir';
+                          const btnClass = isDelete 
+                            ? 'action-btn action-btn-delete' 
+                            : 'action-btn action-btn-edit';
                           return (
                             <button
                               key={i}
-                              className="pagination-btn"
+                              className={btnClass}
                               onClick={e => { e.stopPropagation(); action.onClick(row); }}
                               title={action.label}
                               aria-label={action.label}
@@ -124,28 +128,15 @@ export function DataTable<T extends Record<string, any>>({
         </table>
       </div>
 
-      {pagination && totalPages > 1 && (
-        <div className="table-pagination">
-          <span>
-            Página {pagination.page} de {totalPages}
-          </span>
-          <div className="pagination-controls">
-            <button
-              disabled={pagination.page <= 1}
-              onClick={() => pagination.onPageChange(pagination.page - 1)}
-              className="pagination-btn"
-            >
-              <CaretLeft size={16} />
-            </button>
-            <button
-              disabled={pagination.page >= totalPages}
-              onClick={() => pagination.onPageChange(pagination.page + 1)}
-              className="pagination-btn"
-            >
-              <CaretRight size={16} />
-            </button>
-          </div>
-        </div>
+      {/* Paginação robusta embutida */}
+      {currentPage !== undefined && totalCount !== undefined && itemsPerPage !== undefined && onPageChange && (
+        <Pagination
+          currentPage={currentPage}
+          totalCount={totalCount}
+          itemsPerPage={itemsPerPage}
+          onPageChange={onPageChange}
+          itemLabel={itemLabel}
+        />
       )}
     </div>
   );
