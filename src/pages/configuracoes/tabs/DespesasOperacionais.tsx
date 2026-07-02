@@ -24,14 +24,16 @@ export function DespesasOperacionais({
   const [documentacao, setDocumentacao] = useState<number | string>('');
   const [ipvaDesconto, setIpvaDesconto] = useState<number | string>('');
   const [ipvaDepreciacao, setIpvaDepreciacao] = useState<number | string>('');
+  const [reajusteAluguel, setReajusteAluguel] = useState<number | string>('');
   const [salvando, setSalvando] = useState(false);
 
   // Sincronizar campos com dados carregados
   useEffect(() => {
     if (configuracao) {
       setDocumentacao(configuracao.documentacao_valor);
-      setIpvaDesconto(configuracao.ipva_desconto_vista_percentual);
-      setIpvaDepreciacao(configuracao.ipva_depreciacao_percentual);
+      setIpvaDesconto(configuracao.ipva_desconto_vista_percentual * 100);
+      setIpvaDepreciacao(configuracao.ipva_depreciacao_percentual * 100);
+      setReajusteAluguel(configuracao.reajuste_aluguel_anual_percentual * 100);
     }
   }, [configuracao]);
 
@@ -41,6 +43,7 @@ export function DespesasOperacionais({
     const documentacaoVal = Number(documentacao);
     const ipvaDescontoVal = Number(ipvaDesconto);
     const ipvaDepreciacaoVal = Number(ipvaDepreciacao);
+    const reajusteAluguelVal = Number(reajusteAluguel);
 
     if (isNaN(documentacaoVal) || documentacaoVal < 0) {
       toast.error('Erro', 'Valor de documentação deve ser válido.');
@@ -54,12 +57,17 @@ export function DespesasOperacionais({
       toast.error('Erro', 'IPVA depreciação deve ser um valor válido.');
       return;
     }
+    if (isNaN(reajusteAluguelVal) || reajusteAluguelVal < 0) {
+      toast.error('Erro', 'Índice de reajuste anual deve ser um valor válido.');
+      return;
+    }
 
     setSalvando(true);
     const { error } = await atualizarConfiguracoesLocacao(configuracao.id, {
       documentacao_valor: documentacaoVal,
-      ipva_desconto_vista_percentual: ipvaDescontoVal,
-      ipva_depreciacao_percentual: ipvaDepreciacaoVal,
+      ipva_desconto_vista_percentual: ipvaDescontoVal / 100,
+      ipva_depreciacao_percentual: ipvaDepreciacaoVal / 100,
+      reajuste_aluguel_anual_percentual: reajusteAluguelVal / 100,
     });
     setSalvando(false);
 
@@ -82,7 +90,7 @@ export function DespesasOperacionais({
         <p>Parâmetros operacionais e custos de licenciamento de veículos.</p>
       </div>
 
-      <div className="config-locacao-grid-3">
+      <div className="config-locacao-grid-4">
         <InputNumber
           label="Documentação (R$)"
           value={documentacao}
@@ -103,6 +111,14 @@ export function DespesasOperacionais({
           label="IPVA depreciação (%)"
           value={ipvaDepreciacao}
           onChange={(v) => setIpvaDepreciacao(v)}
+          step={0.01}
+          min={0}
+          required
+        />
+        <InputNumber
+          label="Reajuste anual aluguel (%)"
+          value={reajusteAluguel}
+          onChange={(v) => setReajusteAluguel(v)}
           step={0.01}
           min={0}
           required

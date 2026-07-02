@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ui/Toast';
 import type { ImplementoEscolha } from './ItemImplementoModal';
+import type { TipoUsoDepreciacao } from '../../types/configuracoes.types';
 import '../../styles/components/modal.css';
 
 // ─── Tipos exportados ─────────────────────────────────────────────────────────
@@ -27,14 +28,17 @@ interface LinhaTabela {
   pbt_tecnico: number;
   pbt_homologado: number;
   peso_ordem_marcha: number;
+  preco: number;
 }
 
 interface ItemCaminhaoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (caminhao: CaminhaoSelecionado) => void;
+  onSave: (caminhao: CaminhaoSelecionado, tipoUso: TipoUsoDepreciacao, valor: number) => void;
   implementos: ImplementoEscolha[];
   caminhaoInicial: CaminhaoSelecionado | null;
+  tipoUsoInicial: TipoUsoDepreciacao | null;
+  valorInicial: number | null;
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -44,6 +48,8 @@ export function ItemCaminhaoModal({
   onSave,
   implementos,
   caminhaoInicial,
+  tipoUsoInicial,
+  valorInicial,
 }: ItemCaminhaoModalProps) {
   const toast = useToast();
 
@@ -56,6 +62,10 @@ export function ItemCaminhaoModal({
   const [filtrosEntreEixo, setFiltrosEntreEixo] = useState<string[]>([]);
   const [todosEntreEixos, setTodosEntreEixos] = useState<string[]>([]);
   const [linhaSelecionada, setLinhaSelecionada] = useState<LinhaTabela | null>(null);
+
+  // Novos campos do item
+  const [caminhaoTipoUso, setCaminhaoTipoUso] = useState<TipoUsoDepreciacao>('Leve/Moderado');
+  const [caminhaoValor, setCaminhaoValor] = useState<string | number>('');
 
   // ── Peso total dos implementos ─────────────────────────────────────────────
   const pesoTotalImplementos = implementos.reduce(
@@ -79,6 +89,9 @@ export function ItemCaminhaoModal({
     setTodasLinhas([]);
     setTodosEntreEixos([]);
 
+    setCaminhaoTipoUso(tipoUsoInicial || 'Leve/Moderado');
+    setCaminhaoValor(valorInicial !== null && valorInicial !== undefined ? valorInicial : '');
+
     if (caminhaoInicial) {
       setLinhaSelecionada({
         entre_eixo_id: '',
@@ -90,11 +103,19 @@ export function ItemCaminhaoModal({
         pbt_tecnico: 0,
         pbt_homologado: 0,
         peso_ordem_marcha: 0,
+        preco: valorInicial || 0,
       });
     } else {
       setLinhaSelecionada(null);
     }
   }, [isOpen]);
+
+  // Se o usuário seleciona uma nova linha e o valor está vazio, puxamos o preço sugerido do banco
+  useEffect(() => {
+    if (linhaSelecionada && linhaSelecionada.preco && (caminhaoValor === '' || caminhaoValor === 0)) {
+      setCaminhaoValor(linhaSelecionada.preco);
+    }
+  }, [linhaSelecionada]);
 
   // ── "Encontrar entre-eixos" — busca e avança para etapa 2 ─────────────────
   const handleEncontrar = async () => {
@@ -102,7 +123,7 @@ export function ItemCaminhaoModal({
     try {
       const { data, error } = await supabase
         .from('caminhoes_entre_eixos')
-        .select('id, caminhao_id, dimensao, peso_ordem_marcha, pbt_tecnico, pbt_homologado, caminhao:caminhoes(id, modelo, familia)')
+        .select('id, caminhao_id, dimensao, peso_ordem_marcha, pbt_tecnico, pbt_homologado, preco, caminhao:caminhoes(id, modelo, familia)')
         .eq('is_active', true)
         .order('dimensao');
 
@@ -131,6 +152,7 @@ export function ItemCaminhaoModal({
         pbt_tecnico: r.pbt_tecnico,
         pbt_homologado: r.pbt_homologado,
         peso_ordem_marcha: r.peso_ordem_marcha,
+        preco: r.preco ? Number(r.preco) : 0,
       }));
       setTodasLinhas(linhas);
       setEtapa(2);
@@ -146,8 +168,6 @@ export function ItemCaminhaoModal({
     );
   };
 
-  // ── Capacidade recalculada ao trocar tipo (na etapa 2 não usado diretamente,
-  //    pois já calculamos na busca, mas mantemos reativo para refinamentos futuros)
   const linhasComCapacidade: LinhaTabela[] = todasLinhas.map(l => ({
     ...l,
     capacidade:
@@ -167,12 +187,13 @@ export function ItemCaminhaoModal({
       toast.warning('Nenhum caminhão selecionado', 'Selecione um caminhão na tabela para continuar.');
       return;
     }
+    const val = parseFloat(caminhaoValor.toString()) || 0;
     onSave({
       caminhao_id: linhaSelecionada.caminhao_id,
       caminhao_entre_eixo: linhaSelecionada.dimensao,
       caminhao_modelo: linhaSelecionada.modelo,
       caminhao_familia: linhaSelecionada.familia,
-    });
+    }, caminhaoTipoUso, val);
     onClose();
   };
 
@@ -285,14 +306,14 @@ export function ItemCaminhaoModal({
                         transition: 'all 0.15s',
                       }}
                     >
-                      ×{dim}
+                      × {dim}
                     </button>
                   ))}
                 </div>
               )}
 
               {/* Tabela */}
-              <div style={{ maxHeight: '340px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }}>
                     <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
@@ -341,7 +362,6 @@ export function ItemCaminhaoModal({
                               {linha.familia}
                             </td>
                             <td style={{ padding: '11px 14px', textAlign: 'center' }}>
-                              {/* Toggle switch */}
                               <label
                                 style={{ position: 'relative', display: 'inline-block', width: '36px', height: '20px', cursor: 'pointer' }}
                                 onClick={e => e.stopPropagation()}
@@ -373,6 +393,54 @@ export function ItemCaminhaoModal({
                   </tbody>
                 </table>
               </div>
+
+              {/* Parâmetros adicionais para depreciação e cálculo */}
+              {linhaSelecionada && (
+                <div style={{
+                  padding: '12px',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '12px',
+                  marginTop: '4px'
+                }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', display: 'block', marginBottom: '6px' }}>
+                      Tipo de uso do caminhão (Depreciação)
+                    </label>
+                    <select
+                      value={caminhaoTipoUso}
+                      onChange={e => setCaminhaoTipoUso(e.target.value as TipoUsoDepreciacao)}
+                      style={{
+                        width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                        border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
+                        backgroundColor: '#fff', outline: 'none', cursor: 'pointer'
+                      }}
+                    >
+                      <option value="Leve/Moderado">Leve/Moderado</option>
+                      <option value="Severo">Severo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', display: 'block', marginBottom: '6px' }}>
+                      Valor do caminhão (R$)
+                    </label>
+                    <input
+                      type="number"
+                      value={caminhaoValor}
+                      onChange={e => setCaminhaoValor(e.target.value)}
+                      placeholder="Valor sugerido: R$ 0,00"
+                      style={{
+                        width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                        border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
+                        backgroundColor: '#fff', outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -392,7 +460,7 @@ export function ItemCaminhaoModal({
                     cursor: 'pointer',
                   }}
                 >
-                  Cancelar
+                  Voltar
                 </button>
                 <Button variant="primary" size="md" onClick={handleConfirmar}>
                   Selecionar caminhão

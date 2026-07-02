@@ -6,12 +6,11 @@ import type { OptionType } from '../../../components/ui/Select';
 import { InputNumber } from '../../../components/ui/InputNumber';
 import { Button } from '../../../components/ui/Button';
 import { useToast } from '../../../components/ui/Toast';
+import { ArrowDown } from '@phosphor-icons/react';
 import type {
   DepreciacaoImplemento,
   Categoria,
-  TaxaFinanciamento,
   TipoUsoDepreciacao,
-  PrazoContrato,
 } from '../../../types/configuracoes.types';
 import { TIPOS_USO_DEPRECIACAO } from '../../../types/configuracoes.types';
 import {
@@ -25,7 +24,6 @@ interface DepreciacaoImplementoModalProps {
   onSave: () => Promise<void>;
   editingDep: DepreciacaoImplemento | null;
   categorias: Categoria[];
-  taxas: TaxaFinanciamento[];
 }
 
 export function DepreciacaoImplementoModal({
@@ -34,26 +32,19 @@ export function DepreciacaoImplementoModal({
   onSave,
   editingDep,
   categorias,
-  taxas,
 }: DepreciacaoImplementoModalProps) {
   const toast = useToast();
   const isEditing = !!editingDep;
 
   const [categoriaId, setCategoriaId] = useState<OptionType | null>(null);
-  const [prazo, setPrazo] = useState<OptionType | null>(null);
   const [tipoUso, setTipoUso] = useState<OptionType | null>(null);
-  const [depreciacao, setDepreciacao] = useState<number | string>('');
+  const [anos, setAnos] = useState<(number | string)[]>(Array(10).fill(''));
   const [salvando, setSalvando] = useState(false);
 
   // Opções para os selects
   const categoriaOptions: OptionType[] = categorias.map((c) => ({
     value: c.id,
     label: c.nome,
-  }));
-
-  const prazoOptions: OptionType[] = taxas.map((t) => ({
-    value: t.prazo.toString(),
-    label: `${t.prazo} meses`,
   }));
 
   const tipoUsoOptions: OptionType[] = TIPOS_USO_DEPRECIACAO.map((t) => ({
@@ -65,45 +56,84 @@ export function DepreciacaoImplementoModal({
   useEffect(() => {
     if (isOpen && editingDep) {
       const catOpt = categoriaOptions.find((o) => o.value === editingDep.categoria_id) ?? null;
-      const prazoOpt = prazoOptions.find((o) => o.value === editingDep.prazo.toString()) ?? null;
       const tipoOpt = tipoUsoOptions.find((o) => o.value === editingDep.tipo_uso) ?? null;
       setCategoriaId(catOpt);
-      setPrazo(prazoOpt);
       setTipoUso(tipoOpt);
-      setDepreciacao(editingDep.depreciacao_anual_percentual);
+      setAnos([
+        editingDep.ano_1 ?? '',
+        editingDep.ano_2 ?? '',
+        editingDep.ano_3 ?? '',
+        editingDep.ano_4 ?? '',
+        editingDep.ano_5 ?? '',
+        editingDep.ano_6 ?? '',
+        editingDep.ano_7 ?? '',
+        editingDep.ano_8 ?? '',
+        editingDep.ano_9 ?? '',
+        editingDep.ano_10 ?? '',
+      ]);
     } else if (!isOpen) {
       setCategoriaId(null);
-      setPrazo(null);
       setTipoUso(null);
-      setDepreciacao('');
+      setAnos(Array(10).fill(''));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, editingDep]);
+
+  const updateAno = (index: number, val: number | string) => {
+    setAnos((prev) => {
+      const next = [...prev];
+      next[index] = val;
+      return next;
+    });
+  };
+
+  const copiarParaBaixo = (index: number) => {
+    const valorParaCopiar = anos[index];
+    setAnos((prev) => {
+      const next = [...prev];
+      for (let i = index + 1; i < 10; i++) {
+        next[i] = valorParaCopiar;
+      }
+      return next;
+    });
+    toast.success('Sucesso', 'Valor copiado para os anos seguintes!');
+  };
 
   const handleSalvar = async () => {
     if (!categoriaId) {
       toast.error('Erro', 'Selecione uma categoria.');
       return;
     }
-    if (!prazo) {
-      toast.error('Erro', 'Selecione um prazo.');
-      return;
-    }
     if (!tipoUso) {
       toast.error('Erro', 'Selecione o tipo de uso.');
       return;
     }
-    const depVal = Number(depreciacao);
-    if (depreciacao === '' || isNaN(depVal) || depVal <= 0) {
-      toast.error('Erro', 'A depreciação anual deve ser um valor positivo.');
-      return;
+
+    // Validar anos
+    for (let i = 0; i < 10; i++) {
+      const val = anos[i];
+      if (val !== '') {
+        const num = Number(val);
+        if (isNaN(num) || num <= 0) {
+          toast.error('Erro', `A depreciação do ${i + 1}º ano deve ser um valor positivo.`);
+          return;
+        }
+      }
     }
 
     const payload = {
       categoria_id: categoriaId.value,
-      prazo: prazo.value as PrazoContrato,
       tipo_uso: tipoUso.value as TipoUsoDepreciacao,
-      depreciacao_anual_percentual: depVal,
+      ano_1: anos[0] === '' ? null : Number(anos[0]),
+      ano_2: anos[1] === '' ? null : Number(anos[1]),
+      ano_3: anos[2] === '' ? null : Number(anos[2]),
+      ano_4: anos[3] === '' ? null : Number(anos[3]),
+      ano_5: anos[4] === '' ? null : Number(anos[4]),
+      ano_6: anos[5] === '' ? null : Number(anos[5]),
+      ano_7: anos[6] === '' ? null : Number(anos[6]),
+      ano_8: anos[7] === '' ? null : Number(anos[7]),
+      ano_9: anos[8] === '' ? null : Number(anos[8]),
+      ano_10: anos[9] === '' ? null : Number(anos[9]),
     };
 
     setSalvando(true);
@@ -131,12 +161,51 @@ export function DepreciacaoImplementoModal({
     }
   };
 
+  const renderAnoInput = (index: number) => {
+    const num = index + 1;
+    return (
+      <div key={index} style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+        <div style={{ flex: 1 }}>
+          <InputNumber
+            label={`${num}º ano (% aa)`}
+            value={anos[index]}
+            onChange={(v) => updateAno(index, v)}
+            step={0.01}
+            min={0}
+          />
+        </div>
+        {index < 9 && (
+          <Button
+            variant="secondary"
+            onClick={() => copiarParaBaixo(index)}
+            title="Copiar este valor para todos os anos seguintes"
+            style={{
+              padding: 0,
+              height: '38px',
+              width: '38px',
+              minWidth: '38px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            type="button"
+          >
+            <ArrowDown size={18} />
+          </Button>
+        )}
+        {index === 9 && (
+          <div style={{ width: '38px' }} />
+        )}
+      </div>
+    );
+  };
+
   return (
     <Modal
       open={isOpen}
       onClose={onClose}
       title={isEditing ? 'Editar depreciação' : 'Nova depreciação'}
-      size="md"
+      size="lg"
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={salvando}>
@@ -149,39 +218,39 @@ export function DepreciacaoImplementoModal({
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <Select
-          label="Categoria"
-          options={categoriaOptions}
-          value={categoriaId}
-          onChange={(opt) => setCategoriaId(opt as OptionType | null)}
-          isClearable
-          isSearchable
-          placeholder="Selecione a categoria..."
-        />
-        <Select
-          label="Prazo"
-          options={prazoOptions}
-          value={prazo}
-          onChange={(opt) => setPrazo(opt as OptionType | null)}
-          isClearable
-          placeholder="Selecione o prazo..."
-        />
-        <Select
-          label="Tipo de uso"
-          options={tipoUsoOptions}
-          value={tipoUso}
-          onChange={(opt) => setTipoUso(opt as OptionType | null)}
-          isClearable
-          placeholder="Selecione o tipo..."
-        />
-        <InputNumber
-          label="Depreciação anual (% aa)"
-          value={depreciacao}
-          onChange={(v) => setDepreciacao(v)}
-          step={0.01}
-          min={0}
-          required
-        />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Select
+            label="Categoria"
+            options={categoriaOptions}
+            value={categoriaId}
+            onChange={(opt) => setCategoriaId(opt as OptionType | null)}
+            isClearable
+            isSearchable
+            placeholder="Selecione a categoria..."
+          />
+          <Select
+            label="Tipo de uso"
+            options={tipoUsoOptions}
+            value={tipoUso}
+            onChange={(opt) => setTipoUso(opt as OptionType | null)}
+            isClearable
+            placeholder="Selecione o tipo..."
+          />
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--color-neutral-200)', paddingTop: 16 }}>
+          <h4 style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-neutral-700)', marginBottom: 12 }}>
+            Depreciação por ano (% aa)
+          </h4>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {[0, 1, 2, 3, 4].map((index) => renderAnoInput(index))}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {[5, 6, 7, 8, 9].map((index) => renderAnoInput(index))}
+            </div>
+          </div>
+        </div>
       </div>
     </Modal>
   );

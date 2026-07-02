@@ -3,6 +3,7 @@ import React from 'react';
 import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
 import { Pagination } from './Pagination';
+import { CaretUp, CaretDown, CaretUpDown } from '@phosphor-icons/react';
 import '../../styles/components/table.css';
 
 export interface Column<T = any> {
@@ -36,6 +37,10 @@ interface DataTableProps<T = any> {
   itemsPerPage?: number;
   onPageChange?: (page: number) => void;
   itemLabel?: string;
+  // Novas props de ordenação
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+  onSort?: (key: string, direction: 'asc' | 'desc') => void;
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -52,6 +57,9 @@ export function DataTable<T extends Record<string, any>>({
   itemsPerPage,
   onPageChange,
   itemLabel,
+  sortBy,
+  sortDirection,
+  onSort,
 }: DataTableProps<T>) {
   if (loading) {
     return <LoadingState message="Carregando dados..." />;
@@ -67,14 +75,44 @@ export function DataTable<T extends Record<string, any>>({
         <table className="table">
           <thead>
             <tr>
-              {columns.map(col => (
-                <th
-                  key={col.key}
-                  style={{ width: col.width, textAlign: col.align || 'left' }}
-                >
-                  {col.label}
-                </th>
-              ))}
+              {columns.map(col => {
+                const isSorted = sortBy === col.key;
+                const canSort = col.sortable && !!onSort;
+
+                const renderSortIcon = () => {
+                  if (!canSort) return null;
+                  if (!isSorted) {
+                    return <CaretUpDown size={14} style={{ marginLeft: 6, color: 'var(--color-neutral-400)' }} />;
+                  }
+                  return sortDirection === 'asc' 
+                    ? <CaretUp size={14} style={{ marginLeft: 6, color: 'var(--color-neutral-800)' }} />
+                    : <CaretDown size={14} style={{ marginLeft: 6, color: 'var(--color-neutral-800)' }} />;
+                };
+
+                const handleHeaderClick = () => {
+                  if (!canSort) return;
+                  const nextDirection = isSorted && sortDirection === 'asc' ? 'desc' : 'asc';
+                  onSort(col.key, nextDirection);
+                };
+
+                return (
+                  <th
+                    key={col.key}
+                    style={{ 
+                      width: col.width, 
+                      textAlign: col.align || 'left',
+                      cursor: canSort ? 'pointer' : 'default',
+                      userSelect: canSort ? 'none' : 'auto'
+                    }}
+                    onClick={handleHeaderClick}
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                      {col.label}
+                      {renderSortIcon()}
+                    </div>
+                  </th>
+                );
+              })}
               {actions && actions.length > 0 && (
                 <th style={{ width: '120px', textAlign: 'right' }}>Ações</th>
               )}

@@ -1,8 +1,10 @@
 // pages/configuracoes/tabs/DepreciacaoCaminhoes.tsx — TOPE
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Pencil, Trash } from '@phosphor-icons/react';
+import { Plus, Pencil, Trash, MagnifyingGlass } from '@phosphor-icons/react';
 import { Button } from '../../../components/ui/Button';
 import { DataTable } from '../../../components/ui/DataTable';
+import { Input } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
 import type { Column, ActionConfig } from '../../../components/ui/DataTable';
 import { ConfirmModal } from '../../../components/ui/ConfirmModal';
 import { useToast } from '../../../components/ui/Toast';
@@ -10,7 +12,6 @@ import { DepreciacaoCaminhaoModal } from '../modals/DepreciacaoCaminhaoModal';
 import type {
   DepreciacaoCaminhao,
   Caminhao,
-  TaxaFinanciamento,
 } from '../../../types/configuracoes.types';
 import {
   excluirDepreciacaoCaminhao,
@@ -20,15 +21,15 @@ import '../../../styles/components/configuracoes-locacao.css';
 
 interface DepreciacaoCaminhoesProps {
   caminhoes: Caminhao[];
-  taxas: TaxaFinanciamento[];
 }
 
-const formatarPercentual = (valor: number) =>
-  valor.toString().replace('.', ',') + '%';
+const formatarPercentual = (valor: number | null | undefined) => {
+  if (valor === null || valor === undefined) return '—';
+  return valor.toString().replace('.', ',') + '%';
+};
 
 export function DepreciacaoCaminhoes({
   caminhoes,
-  taxas,
 }: DepreciacaoCaminhoesProps) {
   const toast = useToast();
 
@@ -38,15 +39,41 @@ export function DepreciacaoCaminhoes({
   const [totalCount, setTotalCount] = useState(0);
   const ITEMS_PER_PAGE = 10;
 
+  // Estados de Filtros e Busca
+  const [busca, setBusca] = useState('');
+  const [buscaDebounced, setBuscaDebounced] = useState('');
+  const [tipoUso, setTipoUso] = useState('');
+
+  // Estados de Ordenação
+  const [sortBy, setSortBy] = useState<string>('modelo');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDep, setEditingDep] = useState<DepreciacaoCaminhao | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deletingDep, setDeletingDep] = useState<DepreciacaoCaminhao | null>(null);
   const [deletando, setDeletando] = useState(false);
 
+  // Efeito de Debounce para busca
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setBuscaDebounced(busca);
+      setCurrentPage(1); // Reseta a página ao buscar
+    }, 300);
+
+    return () => clearTimeout(handler);
+  }, [busca]);
+
   const carregarDepreciacoes = useCallback(async () => {
     setLoading(true);
-    const { data, count, error } = await listarDepreciacoesCaminhoesPaginado(currentPage, ITEMS_PER_PAGE);
+    const { data, count, error } = await listarDepreciacoesCaminhoesPaginado(currentPage, ITEMS_PER_PAGE, {
+      busca: buscaDebounced || undefined,
+      tipoUso: tipoUso || undefined,
+      ordenacao: {
+        coluna: sortBy,
+        direcao: sortDirection,
+      },
+    });
     if (error) {
       toast.error('Erro ao carregar', error);
       setDepreciacoes([]);
@@ -56,7 +83,7 @@ export function DepreciacaoCaminhoes({
       setTotalCount(count);
     }
     setLoading(false);
-  }, [currentPage, toast]);
+  }, [currentPage, buscaDebounced, tipoUso, sortBy, sortDirection, toast]);
 
   useEffect(() => {
     carregarDepreciacoes();
@@ -66,26 +93,29 @@ export function DepreciacaoCaminhoes({
     {
       key: 'familia',
       label: 'Família',
+      sortable: true,
       render: (_value: any, row: DepreciacaoCaminhao) => row.caminhoes?.familia ?? '—',
     },
     {
       key: 'modelo',
       label: 'Modelo',
+      sortable: true,
       render: (_value: any, row: DepreciacaoCaminhao) => row.caminhoes?.modelo ?? '—',
-    },
-    {
-      key: 'prazo',
-      label: 'Prazo',
-      render: (value: any) => `${value} meses`,
     },
     {
       key: 'tipo_uso',
       label: 'Tipo',
+      sortable: true,
     },
     {
-      key: 'depreciacao_anual_percentual',
-      label: '% aa',
-      render: (value: number) => formatarPercentual(value),
+      key: 'ano_1',
+      label: 'Depreciação (Ano 1 → 10)',
+      sortable: true,
+      render: (_value: any, row: DepreciacaoCaminhao) => {
+        const ano1 = formatarPercentual(row.ano_1);
+        const ano10 = formatarPercentual(row.ano_10);
+        return `${ano1} → ${ano10}`;
+      },
     },
   ];
 
@@ -152,6 +182,46 @@ export function DepreciacaoCaminhoes({
           </Button>
         </div>
 
+        {/* Barra de Filtros */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '12px', 
+          alignItems: 'flex-end', 
+          marginBottom: 'var(--spacing-20)', 
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ width: '320px' }}>
+            <Input
+              placeholder="Buscar por família ou modelo..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              icon={<MagnifyingGlass size={18} />}
+            />
+          </div>
+          
+          <div style={{ width: '220px' }}>
+            <Select
+              options={[
+                { value: '', label: 'Todos os tipos de uso' },
+                { value: 'Leve/Moderado', label: 'Leve/Moderado' },
+                { value: 'Severo', label: 'Severo' },
+              ]}
+              value={
+                tipoUso 
+                  ? { value: tipoUso, label: tipoUso }
+                  : { value: '', label: 'Todos os tipos de uso' }
+              }
+              onChange={(option: any) => {
+                setTipoUso(option?.value ?? '');
+                setCurrentPage(1);
+              }}
+              isSearchable={true}
+              isClearable={false}
+              placeholder="Tipo de uso..."
+            />
+          </div>
+        </div>
+
         <DataTable<DepreciacaoCaminhao>
           columns={columns}
           data={depreciacoes}
@@ -163,6 +233,13 @@ export function DepreciacaoCaminhoes({
           itemsPerPage={ITEMS_PER_PAGE}
           onPageChange={setCurrentPage}
           itemLabel="depreciações"
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          onSort={(key, direction) => {
+            setSortBy(key);
+            setSortDirection(direction);
+            setCurrentPage(1);
+          }}
         />
       </div>
 
@@ -175,7 +252,6 @@ export function DepreciacaoCaminhoes({
         onSave={handleModalSave}
         editingDep={editingDep}
         caminhoes={caminhoes}
-        taxas={taxas}
       />
 
       <ConfirmModal

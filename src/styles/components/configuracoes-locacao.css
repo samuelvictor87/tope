@@ -83,6 +83,12 @@
 }
 
 /* GRIDS PARA INPUTS */
+.config-locacao-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-24);
+}
+
 .config-locacao-grid-3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -107,6 +113,7 @@
 
 /* RESPONSIVE LAYOUT */
 @media (max-width: 768px) {
+  .config-locacao-grid-4,
   .config-locacao-grid-3,
   .config-locacao-grid-2 {
     grid-template-columns: 1fr;

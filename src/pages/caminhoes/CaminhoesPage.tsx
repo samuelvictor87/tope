@@ -129,8 +129,22 @@ export function CaminhoesPage() {
         .select('*, caminhoes_entre_eixos(*)', { count: 'exact' });
 
       if (debouncedSearch.trim()) {
-        const term = `%${debouncedSearch.trim()}%`;
-        query = query.or(`modelo.ilike.${term},familia.ilike.${term}`);
+        // `familia` é enum — ilike não funciona diretamente em enums no PostgREST.
+        // Buscamos por modelo (texto) e também pelos IDs cujo enum familia::text bate com a busca.
+        const term = debouncedSearch.trim().toLowerCase();
+        const { data: famIds } = await supabase
+          .from('caminhoes')
+          .select('id, familia')
+          .limit(500);
+        const idsComFamilia = (famIds || [])
+          .filter((r: any) => r.familia?.toLowerCase().includes(term))
+          .map((r: any) => r.id);
+
+        if (idsComFamilia.length > 0) {
+          query = query.or(`modelo.ilike.%${term}%,id.in.(${idsComFamilia.join(',')})`);
+        } else {
+          query = query.ilike('modelo', `%${term}%`);
+        }
       }
 
       if (filterFamily && filterFamily.value !== 'Todos') {

@@ -6,6 +6,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ui/Toast';
+import type { TipoUsoDepreciacao } from '../../types/configuracoes.types';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 export interface ImplementoAtributoEscolha {
@@ -54,9 +55,11 @@ interface OpcaoSelecionada {
 interface ItemImplementoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (implementos: ImplementoEscolha[]) => void;
+  onSave: (implementos: ImplementoEscolha[], tipoUso: TipoUsoDepreciacao, valor: number) => void;
   itemDescricao: string;
   implementosIniciais: ImplementoEscolha[];
+  tipoUsoInicial: TipoUsoDepreciacao | null;
+  valorInicial: number | null;
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -66,6 +69,8 @@ export function ItemImplementoModal({
   onSave,
   itemDescricao,
   implementosIniciais,
+  tipoUsoInicial,
+  valorInicial,
 }: ItemImplementoModalProps) {
   const toast = useToast();
 
@@ -89,11 +94,18 @@ export function ItemImplementoModal({
   // Passo 3: opções selecionadas por (categoria, atributo)
   const [opcoesSelecionadas, setOpcoesSelecionadas] = useState<OpcaoSelecionada[]>([]);
 
+  // Novos campos do item
+  const [implementoTipoUso, setImplementoTipoUso] = useState<TipoUsoDepreciacao>('Leve/Moderado');
+  const [implementoValor, setImplementoValor] = useState<string | number>('');
+
   // ── Buscar categorias ao abrir o modal ──────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
 
     // Pré-preenche com dados iniciais
+    setImplementoTipoUso(tipoUsoInicial || 'Leve/Moderado');
+    setImplementoValor(valorInicial !== null && valorInicial !== undefined ? valorInicial : '');
+
     if (implementosIniciais.length > 0) {
       const cats = implementosIniciais.map(i => i.categoria_id);
       setCategoriasSelecionadas(cats);
@@ -156,43 +168,50 @@ export function ItemImplementoModal({
       .then(({ data, error }) => {
         setLoadingOpcoes(false);
         if (error) { toast.error('Erro ao buscar opções', error.message); return; }
-        setOpcoes(data || []);
+        const rows = (data || []).map((r: any) => ({
+          id: r.id,
+          nome: r.nome,
+          atributo_id: r.atributo_id,
+          peso: r.peso ? Number(r.peso) : null,
+        }));
+        setOpcoes(rows);
       });
   }, [passo, atributosSelecionados]);
 
-  // ─── Helpers de toggle ──────────────────────────────────────────────────────
+  // ── Modificar seleção de categorias ─────────────────────────────────────────
   const toggleCategoria = (id: string) => {
     setCategoriasSelecionadas(prev =>
       prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
     );
-    // Limpa atributos e opções da categoria desmarcada
-    setAtributosSelecionados(prev => prev.filter(a => a.categoria_id !== id));
-    setOpcoesSelecionadas(prev => prev.filter(o => o.categoria_id !== id));
   };
 
-  const toggleAtributo = (categoria_id: string, atributo_id: string) => {
-    const key = { categoria_id, atributo_id };
-    const exists = atributosSelecionados.some(a => a.categoria_id === categoria_id && a.atributo_id === atributo_id);
-    if (exists) {
-      setAtributosSelecionados(prev => prev.filter(a => !(a.categoria_id === categoria_id && a.atributo_id === atributo_id)));
-      setOpcoesSelecionadas(prev => prev.filter(o => !(o.categoria_id === categoria_id && o.atributo_id === atributo_id)));
-    } else {
-      setAtributosSelecionados(prev => [...prev, key]);
-    }
-  };
-
-  const setOpcao = (categoria_id: string, atributo_id: string, opcao_id: string) => {
-    setOpcoesSelecionadas(prev => {
-      const outros = prev.filter(o => !(o.categoria_id === categoria_id && o.atributo_id === atributo_id));
-      return [...outros, { categoria_id, atributo_id, opcao_id }];
+  // ── Modificar seleção de atributos ──────────────────────────────────────────
+  const toggleAtributo = (categoriaId: string, atributoId: string) => {
+    setAtributosSelecionados(prev => {
+      const existe = prev.some(a => a.categoria_id === categoriaId && a.atributo_id === atributoId);
+      if (existe) {
+        // Remove atributo e sua opção
+        setOpcoesSelecionadas(opts => opts.filter(o => !(o.categoria_id === categoriaId && o.atributo_id === atributoId)));
+        return prev.filter(a => !(a.categoria_id === categoriaId && a.atributo_id === atributoId));
+      }
+      return [...prev, { categoria_id: categoriaId, atributo_id: atributoId }];
     });
   };
 
-  // ─── Navegar entre passos ───────────────────────────────────────────────────
+  // ── Modificar seleção de opções ─────────────────────────────────────────────
+  const setOpcao = (categoriaId: string, atributoId: string, opcaoId: string) => {
+    setOpcoesSelecionadas(prev => {
+      const filtrado = prev.filter(o => !(o.categoria_id === categoriaId && o.atributo_id === atributoId));
+      if (!opcaoId) return filtrado;
+      return [...filtrado, { categoria_id: categoriaId, atributo_id: atributoId, opcao_id: opcaoId }];
+    });
+  };
+
+  // ── Wizard Navegação ────────────────────────────────────────────────────────
   const handleProximo = () => {
     if (passo === 1) {
       if (categoriasSelecionadas.length === 0) {
-        toast.warning('Selecione ao menos uma categoria', 'Escolha ao menos uma categoria de implemento para continuar.');
+        toast.warning('Selecione uma categoria', 'Selecione ao menos uma categoria de implemento para continuar.');
         return;
       }
       setPasso(2);
@@ -246,7 +265,8 @@ export function ItemImplementoModal({
       };
     });
 
-    onSave(resultado);
+    const val = parseFloat(implementoValor.toString()) || 0;
+    onSave(resultado, implementoTipoUso, val);
     onClose();
   };
 
@@ -263,74 +283,60 @@ export function ItemImplementoModal({
             <div style={{
               width: '28px', height: '28px', borderRadius: '50%', display: 'flex',
               alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 600,
-              backgroundColor: passo > step.num ? 'var(--color-primary)' : passo === step.num ? 'var(--color-primary)' : '#e2e8f0',
-              color: passo >= step.num ? '#fff' : 'var(--color-grey-500)',
-              border: passo >= step.num ? 'none' : '1.5px solid #e2e8f0',
-              flexShrink: 0,
+              backgroundColor: passo === step.num ? 'var(--color-primary)' : passo > step.num ? 'rgba(249,115,22,0.1)' : '#f1f5f9',
+              color: passo === step.num ? '#fff' : passo > step.num ? 'var(--color-primary)' : 'var(--color-grey-500)',
+              border: passo === step.num ? 'none' : '1px solid',
+              borderColor: passo > step.num ? 'var(--color-primary)' : '#e2e8f0',
             }}>
               {passo > step.num ? <CheckCircle size={16} weight="fill" /> : step.num}
             </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '11px', fontWeight: 600, color: passo >= step.num ? 'var(--color-grey-800)' : 'var(--color-grey-400)' }}>
-                {step.label}
-              </div>
-              <div style={{ fontSize: '10px', color: 'var(--color-grey-400)' }}>{step.sub}</div>
-            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: passo === step.num ? 'var(--color-grey-800)' : 'var(--color-grey-500)' }}>
+              {step.label}
+            </span>
+            <span style={{ fontSize: '10px', color: 'var(--color-grey-400)' }}>
+              {step.sub}
+            </span>
           </div>
           {i < 2 && (
-            <div style={{ flex: 1, height: '2px', backgroundColor: passo > step.num ? 'var(--color-primary)' : '#e2e8f0', marginBottom: '22px' }} />
+            <div style={{
+              flex: 1, height: '2px', marginLeft: '12px', marginRight: '4px',
+              backgroundColor: passo > step.num ? 'var(--color-primary)' : '#e2e8f0',
+            }} />
           )}
         </div>
       ))}
     </div>
   );
 
-  // ─── Renderização dos passos ────────────────────────────────────────────────
+  // ─── Renderizadores de Passos ──────────────────────────────────────────────
   const renderPasso1 = () => (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {loadingCats ? (
         <p style={{ color: 'var(--color-grey-500)', textAlign: 'center', padding: '20px' }}>Carregando categorias...</p>
       ) : (
-        <div style={{
-          border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)',
-          padding: '4px', minHeight: '48px', display: 'flex', flexWrap: 'wrap', gap: '6px',
-          cursor: 'text', backgroundColor: '#fff'
-        }}>
-          {categoriasSelecionadas.map(catId => {
-            const cat = categorias.find(c => c.id === catId);
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
+          {categorias.map(cat => {
+            const isSelected = categoriasSelecionadas.includes(cat.id);
             return (
-              <span key={catId} style={{
-                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0',
-                borderRadius: '4px', padding: '4px 10px', fontSize: '13px',
-                color: 'var(--color-grey-800)', fontWeight: 500,
-              }}>
-                × {cat?.nome}
-                <button type="button" onClick={() => toggleCategoria(catId)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 0 4px', lineHeight: 1, color: 'var(--color-grey-500)', fontSize: '14px' }}>
-                  ×
-                </button>
-              </span>
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => toggleCategoria(cat.id)}
+                style={{
+                  padding: '12px 16px', borderRadius: 'var(--radius-md)', fontSize: '13px', fontWeight: 600,
+                  cursor: 'pointer', border: '1px solid', textAlign: 'center',
+                  borderColor: isSelected ? 'var(--color-primary)' : '#e2e8f0',
+                  backgroundColor: isSelected ? 'rgba(249,115,22,0.06)' : '#fff',
+                  color: isSelected ? 'var(--color-primary)' : 'var(--color-grey-700)',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {cat.nome}
+              </button>
             );
           })}
-          <div style={{ position: 'relative', flex: 1 }}>
-            <select
-              style={{
-                width: '100%', minWidth: '120px', border: 'none', outline: 'none',
-                fontSize: '14px', padding: '8px', backgroundColor: 'transparent',
-                color: 'var(--color-grey-600)', cursor: 'pointer',
-              }}
-              value=""
-              onChange={e => { if (e.target.value) toggleCategoria(e.target.value); }}
-            >
-              <option value="">
-                {categoriasSelecionadas.length === 0 ? 'Categoria' : 'Adicionar outra...'}
-              </option>
-              {categorias
-                .filter(c => !categoriasSelecionadas.includes(c.id))
-                .map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            </select>
-          </div>
         </div>
       )}
     </div>
@@ -411,47 +417,95 @@ export function ItemImplementoModal({
       {loadingOpcoes ? (
         <p style={{ color: 'var(--color-grey-500)', textAlign: 'center', padding: '20px' }}>Carregando opções...</p>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-              <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--color-primary)' }}>Categoria</th>
-              <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--color-primary)', paddingLeft: '50px' }}>Opção</th>
-            </tr>
-          </thead>
-          <tbody>
-            {categoriasSelecionadas.map(catId => {
-              const cat = categorias.find(c => c.id === catId);
-              const attrsDesaCat = atributosSelecionados.filter(a => a.categoria_id === catId);
-              return attrsDesaCat.map(({ atributo_id }) => {
-                const attr = atributos.find(a => a.id === atributo_id);
-                const opcoesDoAttr = opcoes.filter(o => o.atributo_id === atributo_id);
-                const opcSel = opcoesSelecionadas.find(o => o.categoria_id === catId && o.atributo_id === atributo_id);
-                return (
-                  <tr key={`${catId}-${atributo_id}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '12px', fontSize: '13px', color: 'var(--color-grey-700)', fontWeight: 500, verticalAlign: 'middle', width: '35%' }}>
-                      {cat?.nome}
-                    </td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <select
-                        value={opcSel?.opcao_id || ''}
-                        onChange={e => setOpcao(catId, atributo_id, e.target.value)}
-                        style={{
-                          width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
-                          border: '1px solid #e2e8f0', fontSize: '14px',
-                          color: 'var(--color-grey-800)', backgroundColor: '#fff',
-                          outline: 'none', cursor: 'pointer',
-                        }}
-                      >
-                        <option value="">{attr?.nome}</option>
-                        {opcoesDoAttr.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
-                      </select>
-                    </td>
-                  </tr>
-                );
-              });
-            })}
-          </tbody>
-        </table>
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--color-primary)' }}>Categoria</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--color-primary)', paddingLeft: '50px' }}>Opção</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoriasSelecionadas.map(catId => {
+                const cat = categorias.find(c => c.id === catId);
+                const attrsDesaCat = atributosSelecionados.filter(a => a.categoria_id === catId);
+                return attrsDesaCat.map(({ atributo_id }) => {
+                  const attr = atributos.find(a => a.id === atributo_id);
+                  const opcoesDoAttr = opcoes.filter(o => o.atributo_id === atributo_id);
+                  const opcSel = opcoesSelecionadas.find(o => o.categoria_id === catId && o.atributo_id === atributo_id);
+                  return (
+                    <tr key={`${catId}-${atributo_id}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px', fontSize: '13px', color: 'var(--color-grey-700)', fontWeight: 500, verticalAlign: 'middle', width: '35%' }}>
+                        {cat?.nome}
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <select
+                          value={opcSel?.opcao_id || ''}
+                          onChange={e => setOpcao(catId, atributo_id, e.target.value)}
+                          style={{
+                            width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                            border: '1px solid #e2e8f0', fontSize: '14px',
+                            color: 'var(--color-grey-800)', backgroundColor: '#fff',
+                            outline: 'none', cursor: 'pointer',
+                          }}
+                        >
+                          <option value="">{attr?.nome}</option>
+                          {opcoesDoAttr.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                });
+              })}
+            </tbody>
+          </table>
+
+          {/* Novos parâmetros para cálculo de depreciação de implemento */}
+          <div style={{
+            padding: '12px',
+            backgroundColor: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: 'var(--radius-md)',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '12px',
+            marginTop: '16px'
+          }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', display: 'block', marginBottom: '6px' }}>
+                Tipo de uso do implemento (Depreciação)
+              </label>
+              <select
+                value={implementoTipoUso}
+                onChange={e => setImplementoTipoUso(e.target.value as TipoUsoDepreciacao)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                  border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
+                  backgroundColor: '#fff', outline: 'none', cursor: 'pointer'
+                }}
+              >
+                <option value="Leve/Moderado">Leve/Moderado</option>
+                <option value="Severo">Severo</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', display: 'block', marginBottom: '6px' }}>
+                Valor de aquisição do implemento (R$)
+              </label>
+              <input
+                type="number"
+                value={implementoValor}
+                onChange={e => setImplementoValor(e.target.value)}
+                placeholder="R$ 0,00"
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                  border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
+                  backgroundColor: '#fff', outline: 'none'
+                }}
+              />
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

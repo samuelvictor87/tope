@@ -9,10 +9,13 @@ export const PRAZOS_CONTRATO: PrazoContrato[] = ['12', '24', '36', '48', '60', '
 export interface ConfiguracaoLocacao {
   id: string;
   comissao_venda_percentual: number;
-  imposto_venda_percentual: number;
+  imposto_venda_ir_percentual: number;
+  imposto_venda_adicional_ir_percentual: number;
+  imposto_venda_csll_percentual: number;
   documentacao_valor: number;
   ipva_desconto_vista_percentual: number;
   ipva_depreciacao_percentual: number;
+  reajuste_aluguel_anual_percentual: number;
   criado_em: string;
   atualizado_em: string;
 }
@@ -28,9 +31,17 @@ export interface TaxaFinanciamento {
 export interface DepreciacaoCaminhao {
   id: string;
   caminhao_id: string;
-  prazo: PrazoContrato;
   tipo_uso: TipoUsoDepreciacao;
-  depreciacao_anual_percentual: number;
+  ano_1: number | null;
+  ano_2: number | null;
+  ano_3: number | null;
+  ano_4: number | null;
+  ano_5: number | null;
+  ano_6: number | null;
+  ano_7: number | null;
+  ano_8: number | null;
+  ano_9: number | null;
+  ano_10: number | null;
   criado_em: string;
   atualizado_em?: string;
   caminhoes?: {
@@ -42,9 +53,17 @@ export interface DepreciacaoCaminhao {
 export interface DepreciacaoImplemento {
   id: string;
   categoria_id: string;
-  prazo: PrazoContrato;
   tipo_uso: TipoUsoDepreciacao;
-  depreciacao_anual_percentual: number;
+  ano_1: number | null;
+  ano_2: number | null;
+  ano_3: number | null;
+  ano_4: number | null;
+  ano_5: number | null;
+  ano_6: number | null;
+  ano_7: number | null;
+  ano_8: number | null;
+  ano_9: number | null;
+  ano_10: number | null;
   criado_em: string;
   atualizado_em?: string;
   implemento_categorias?: {
@@ -67,10 +86,13 @@ export interface Categoria {
 // Payloads para criação/edição
 export interface ConfiguracaoLocacaoPayload {
   comissao_venda_percentual?: number;
-  imposto_venda_percentual?: number;
+  imposto_venda_ir_percentual?: number;
+  imposto_venda_adicional_ir_percentual?: number;
+  imposto_venda_csll_percentual?: number;
   documentacao_valor?: number;
   ipva_desconto_vista_percentual?: number;
   ipva_depreciacao_percentual?: number;
+  reajuste_aluguel_anual_percentual?: number;
 }
 
 export interface TaxaFinanciamentoPayload {
@@ -80,14 +102,30 @@ export interface TaxaFinanciamentoPayload {
 
 export interface DepreciacaoCaminhaoPayload {
   caminhao_id: string;
-  prazo: PrazoContrato;
   tipo_uso: TipoUsoDepreciacao;
-  depreciacao_anual_percentual: number;
+  ano_1: number | null;
+  ano_2: number | null;
+  ano_3: number | null;
+  ano_4: number | null;
+  ano_5: number | null;
+  ano_6: number | null;
+  ano_7: number | null;
+  ano_8: number | null;
+  ano_9: number | null;
+  ano_10: number | null;
 }
 
 export interface DepreciacaoImplementoPayload {
   categoria_id: string;
-  prazo: PrazoContrato;
   tipo_uso: TipoUsoDepreciacao;
-  depreciacao_anual_percentual: number;
+  ano_1: number | null;
+  ano_2: number | null;
+  ano_3: number | null;
+  ano_4: number | null;
+  ano_5: number | null;
+  ano_6: number | null;
+  ano_7: number | null;
+  ano_8: number | null;
+  ano_9: number | null;
+  ano_10: number | null;
 }

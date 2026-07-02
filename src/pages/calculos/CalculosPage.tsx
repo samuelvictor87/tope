@@ -64,7 +64,6 @@ export function CalculosPage() {
         return (
           <DepreciacaoCaminhoes
             caminhoes={caminhoes}
-            taxas={taxas}
           />
         );
 
@@ -72,7 +71,6 @@ export function CalculosPage() {
         return (
           <DepreciacaoImplementos
             categorias={categorias}
-            taxas={taxas}
           />
         );
 

@@ -11,6 +11,7 @@ import type {
   DepreciacaoImplementoPayload,
   Caminhao,
   Categoria,
+  TipoUsoDepreciacao,
 } from '../types/configuracoes.types';
 
 // ─── Configurações gerais ───────────────────────────────────
@@ -115,11 +116,17 @@ export async function excluirTaxaFinanciamento(
 
 // ─── Depreciação de caminhões ───────────────────────────────
 
+const obterCacheBuster = () => {
+  const ts = new Date().getTime().toString().slice(-12).padStart(12, '0');
+  return `00000000-0000-4000-a000-${ts}`;
+};
+
 export async function listarDepreciacoesCaminhoes(): Promise<DepreciacaoCaminhao[]> {
   const { data, error } = await supabase
     .from('cal_depreciacao_caminhoes')
     .select('*, caminhoes(familia, modelo)')
-    .order('prazo', { ascending: true });
+    .neq('id', obterCacheBuster())
+    .order('tipo_uso', { ascending: true });
 
   if (error) {
     console.error('Erro ao listar depreciações de caminhões:', error);
@@ -140,7 +147,7 @@ export async function criarDepreciacaoCaminhao(
   if (error) {
     console.error('Erro ao criar depreciação de caminhão:', error);
     if (error.code === '23505') {
-      return { data: null, error: 'Já existe uma regra para essa combinação de caminhão, prazo e tipo de uso.' };
+      return { data: null, error: 'Já existe uma regra para essa combinação de caminhão e tipo de uso.' };
     }
     return { data: null, error: error.message };
   }
@@ -159,7 +166,7 @@ export async function atualizarDepreciacaoCaminhao(
   if (error) {
     console.error('Erro ao atualizar depreciação de caminhão:', error);
     if (error.code === '23505') {
-      return { error: 'Já existe uma regra para essa combinação de caminhão, prazo e tipo de uso.' };
+      return { error: 'Já existe uma regra para essa combinação de caminhão e tipo de uso.' };
     }
     return { error: error.message };
   }
@@ -181,18 +188,74 @@ export async function excluirDepreciacaoCaminhao(
   return { error: null };
 }
 
+export interface FiltrosDepreciacao {
+  busca?: string;
+  tipoUso?: string;
+  ordenacao?: {
+    coluna: string;
+    direcao: 'asc' | 'desc';
+  };
+}
+
 export async function listarDepreciacoesCaminhoesPaginado(
   page: number,
-  limit: number
+  limit: number,
+  filtros?: FiltrosDepreciacao
 ): Promise<{ data: DepreciacaoCaminhao[]; count: number; error: string | null }> {
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  const { data, error, count } = await supabase
+  // `familia` em `caminhoes` é enum — ilike não funciona em enums no PostgREST.
+  // Estratégia: se houver busca, buscar os IDs de caminhoes que batem e filtrar com .in()
+  let caminhaoIdsFiltrados: string[] | null = null;
+  if (filtros?.busca) {
+    const term = filtros.busca.toLowerCase();
+    const { data: cams } = await supabase
+      .from('caminhoes')
+      .select('id, familia, modelo')
+      .limit(500);
+
+    caminhaoIdsFiltrados = (cams || [])
+      .filter((c: any) =>
+        c.familia?.toLowerCase().includes(term) ||
+        c.modelo?.toLowerCase().includes(term)
+      )
+      .map((c: any) => c.id);
+  }
+
+  let query = supabase
     .from('cal_depreciacao_caminhoes')
     .select('*, caminhoes(familia, modelo)', { count: 'exact' })
-    .order('prazo', { ascending: true })
-    .range(from, to);
+    .neq('id', obterCacheBuster());
+
+  // Filtro por IDs de caminhão (busca textual)
+  if (caminhaoIdsFiltrados !== null) {
+    if (caminhaoIdsFiltrados.length === 0) {
+      // Nenhum caminhão bate com a busca — retorna vazio
+      return { data: [], count: 0, error: null };
+    }
+    query = query.in('caminhao_id', caminhaoIdsFiltrados);
+  }
+
+  // Filtro por tipo de uso
+  if (filtros?.tipoUso) {
+    query = query.eq('tipo_uso', filtros.tipoUso);
+  }
+
+  // Ordenação
+  if (filtros?.ordenacao?.coluna) {
+    const { coluna, direcao } = filtros.ordenacao;
+    const ascending = direcao === 'asc';
+    if (coluna === 'familia' || coluna === 'modelo') {
+      query = query.order(coluna, { referencedTable: 'caminhoes', ascending });
+    } else {
+      query = query.order(coluna, { ascending });
+    }
+  } else {
+    query = query.order('tipo_uso', { ascending: true });
+  }
+
+  const { data, error, count } = await query.range(from, to);
 
   if (error) {
     console.error('Erro ao listar depreciações de caminhões paginado:', error);
@@ -201,13 +264,14 @@ export async function listarDepreciacoesCaminhoesPaginado(
   return { data: (data || []) as DepreciacaoCaminhao[], count: count || 0, error: null };
 }
 
+
 // ─── Depreciação de implementos ─────────────────────────────
 
 export async function listarDepreciacoesImplementos(): Promise<DepreciacaoImplemento[]> {
   const { data, error } = await supabase
     .from('cal_depreciacao_implementos')
     .select('*, implemento_categorias(nome)')
-    .order('prazo', { ascending: true });
+    .order('tipo_uso', { ascending: true });
 
   if (error) {
     console.error('Erro ao listar depreciações de implementos:', error);
@@ -228,7 +292,7 @@ export async function criarDepreciacaoImplemento(
   if (error) {
     console.error('Erro ao criar depreciação de implemento:', error);
     if (error.code === '23505') {
-      return { data: null, error: 'Já existe uma regra para essa combinação de categoria, prazo e tipo de uso.' };
+      return { data: null, error: 'Já existe uma regra para essa combinação de categoria e tipo de uso.' };
     }
     return { data: null, error: error.message };
   }
@@ -247,7 +311,7 @@ export async function atualizarDepreciacaoImplemento(
   if (error) {
     console.error('Erro ao atualizar depreciação de implemento:', error);
     if (error.code === '23505') {
-      return { error: 'Já existe uma regra para essa combinação de categoria, prazo e tipo de uso.' };
+      return { error: 'Já existe uma regra para essa combinação de categoria e tipo de uso.' };
     }
     return { error: error.message };
   }
@@ -269,18 +333,57 @@ export async function excluirDepreciacaoImplemento(
   return { error: null };
 }
 
+export interface FiltrosDepreciacaoImplemento {
+  busca?: string;
+  tipoUso?: string;
+  ordenacao?: {
+    coluna: string;
+    direcao: 'asc' | 'desc';
+  };
+}
+
 export async function listarDepreciacoesImplementosPaginado(
   page: number,
-  limit: number
+  limit: number,
+  filtros?: FiltrosDepreciacaoImplemento
 ): Promise<{ data: DepreciacaoImplemento[]; count: number; error: string | null }> {
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  const { data, error, count } = await supabase
+  const selectQuery = filtros?.busca 
+    ? '*, implemento_categorias!inner(nome)' 
+    : '*, implemento_categorias(nome)';
+
+  let query = supabase
     .from('cal_depreciacao_implementos')
-    .select('*, implemento_categorias(nome)', { count: 'exact' })
-    .order('prazo', { ascending: true })
-    .range(from, to);
+    .select(selectQuery, { count: 'exact' })
+    .neq('id', obterCacheBuster());
+
+  // Filtro por tipo de uso
+  if (filtros?.tipoUso) {
+    query = query.eq('tipo_uso', filtros.tipoUso);
+  }
+
+  // Filtro por busca textual (nome da categoria do implemento)
+  if (filtros?.busca) {
+    query = query.ilike('implemento_categorias.nome', `%${filtros.busca}%`);
+  }
+
+  // Ordenação
+  if (filtros?.ordenacao?.coluna) {
+    const { coluna, direcao } = filtros.ordenacao;
+    const ascending = direcao === 'asc';
+
+    if (coluna === 'categoria') {
+      query = query.order('nome', { referencedTable: 'implemento_categorias', ascending });
+    } else {
+      query = query.order(coluna, { ascending });
+    }
+  } else {
+    query = query.order('tipo_uso', { ascending: true });
+  }
+
+  const { data, error, count } = await query.range(from, to);
 
   if (error) {
     console.error('Erro ao listar depreciações de implementos paginado:', error);
@@ -315,4 +418,40 @@ export async function listarCategorias(): Promise<Categoria[]> {
     return [];
   }
   return data as Categoria[];
+}
+
+export async function buscarDepreciacaoCaminhao(
+  caminhaoId: string,
+  tipoUso: TipoUsoDepreciacao
+): Promise<DepreciacaoCaminhao | null> {
+  const { data, error } = await supabase
+    .from('cal_depreciacao_caminhoes')
+    .select('*, caminhoes(id, modelo, familia)')
+    .eq('caminhao_id', caminhaoId)
+    .eq('tipo_uso', tipoUso)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao buscar depreciação do caminhão:', error);
+    return null;
+  }
+  return data as DepreciacaoCaminhao;
+}
+
+export async function buscarDepreciacaoImplemento(
+  categoriaId: string,
+  tipoUso: TipoUsoDepreciacao
+): Promise<DepreciacaoImplemento | null> {
+  const { data, error } = await supabase
+    .from('cal_depreciacao_implementos')
+    .select('*, implemento_categorias(nome)')
+    .eq('categoria_id', categoriaId)
+    .eq('tipo_uso', tipoUso)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao buscar depreciação do implemento:', error);
+    return null;
+  }
+  return data as DepreciacaoImplemento;
 }

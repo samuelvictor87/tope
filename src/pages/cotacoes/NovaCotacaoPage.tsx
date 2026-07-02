@@ -15,6 +15,7 @@ import {
   Pencil,
   Check,
   X,
+  Calculator,
 } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -31,16 +32,37 @@ import { ItemImplementoModal } from './ItemImplementoModal';
 import type { ImplementoEscolha } from './ItemImplementoModal';
 import { ItemCaminhaoModal } from './ItemCaminhaoModal';
 import type { CaminhaoSelecionado } from './ItemCaminhaoModal';
+import { CalculoItemModal } from './CalculoItemModal';
+import type { TipoUsoDepreciacao } from '../../types/configuracoes.types';
 import '../../styles/components/cotacoes.css';
 
 // ─── Interfaces locais ────────────────────────────────────────────────────────
-interface ItemLocal {
+export interface ItemLocal {
   tempId: string;
   id?: string;
   quantidade: number;
   descricao: string;
   implementos: ImplementoEscolha[];
   caminhao: CaminhaoSelecionado | null;
+  caminhao_tipo_uso?: TipoUsoDepreciacao;
+  caminhao_valor?: number;
+  implemento_tipo_uso?: TipoUsoDepreciacao;
+  implemento_valor?: number;
+
+  // Taxas históricas vigentes no momento
+  comissao_venda_percentual?: number;
+  imposto_venda_ir_percentual?: number;
+  imposto_venda_adicional_ir_percentual?: number;
+  imposto_venda_csll_percentual?: number;
+  documentacao_valor?: number;
+  ipva_desconto_vista_percentual?: number;
+  ipva_depreciacao_percentual?: number;
+  reajuste_aluguel_anual_percentual?: number;
+
+  // IDs correspondentes nas tabelas de depreciação do banco
+  caminhao_depreciacao_id?: string | null;
+  implemento_depreciacao_id?: string | null;
+
   editandoDescricao?: boolean;
   descricaoEditTemp?: string;
 }
@@ -154,7 +176,10 @@ export function NovaCotacaoPage() {
   // ── Modais de Item ───────────────────────────────────────────────────────────
   const [implementoModalOpen, setImplementoModalOpen] = useState(false);
   const [caminhaoModalOpen, setCaminhaoModalOpen] = useState(false);
+  const [calculoModalOpen, setCalculoModalOpen] = useState(false);
+  const [itemCalculoAtivo, setItemCalculoAtivo] = useState<ItemLocal | null>(null);
   const [itemAtivo, setItemAtivo] = useState<string | null>(null); // tempId
+  const [configLocacao, setConfigLocacao] = useState<any>(null);
 
   // ── Arquivos / Anexos ────────────────────────────────────────────────────────
   const [novosArquivos, setNovosArquivos] = useState<File[]>([]);
@@ -190,10 +215,40 @@ export function NovaCotacaoPage() {
 
   // ── 2. Carregar Cotação Existente (Edição) ───────────────────────────────────
   useEffect(() => {
+    async function loadConfigLocacao() {
+      try {
+        const { data, error } = await supabase
+          .from('cal_configuracoes_locacao')
+          .select('*')
+          .order('criado_em', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) {
+          console.error('Erro ao carregar configurações globais:', error.message);
+        }
+        if (data) {
+          setConfigLocacao(data);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar configurações globais:', err);
+      }
+    }
+    loadConfigLocacao();
+  }, []);
+
+  useEffect(() => {
     async function loadCotacao() {
       if (!isEditMode || !id) return;
       setLoadingData(true);
       try {
+        // Carrega configurações de locação vigentes no momento
+        const { data: activeConfig } = await supabase
+          .from('cal_configuracoes_locacao')
+          .select('*')
+          .order('criado_em', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
         const { data: cot, error: errC } = await supabase
           .from('cotacoes')
           .select('*, vendedor:usuarios(id, nome_completo)')
@@ -248,6 +303,24 @@ export function NovaCotacaoPage() {
                 caminhao_modelo: item.caminhao?.modelo || '',
                 caminhao_familia: item.caminhao?.familia || '',
               } : null,
+              caminhao_tipo_uso: item.caminhao_tipo_uso || undefined,
+              caminhao_valor: item.caminhao_valor !== null ? Number(item.caminhao_valor) : undefined,
+              implemento_tipo_uso: item.implemento_tipo_uso || undefined,
+              implemento_valor: item.implemento_valor !== null ? Number(item.implemento_valor) : undefined,
+
+              // Taxas históricas
+              comissao_venda_percentual: item.comissao_venda_percentual !== null ? Number(item.comissao_venda_percentual) : (activeConfig?.comissao_venda_percentual || undefined),
+              imposto_venda_ir_percentual: item.imposto_venda_ir_percentual !== null ? Number(item.imposto_venda_ir_percentual) : (activeConfig?.imposto_venda_ir_percentual || undefined),
+              imposto_venda_adicional_ir_percentual: item.imposto_venda_adicional_ir_percentual !== null ? Number(item.imposto_venda_adicional_ir_percentual) : (activeConfig?.imposto_venda_adicional_ir_percentual || undefined),
+              imposto_venda_csll_percentual: item.imposto_venda_csll_percentual !== null ? Number(item.imposto_venda_csll_percentual) : (activeConfig?.imposto_venda_csll_percentual || undefined),
+              documentacao_valor: item.documentacao_valor !== null ? Number(item.documentacao_valor) : (activeConfig?.documentacao_valor || undefined),
+              ipva_desconto_vista_percentual: item.ipva_desconto_vista_percentual !== null ? Number(item.ipva_desconto_vista_percentual) : (activeConfig?.ipva_desconto_vista_percentual || undefined),
+              ipva_depreciacao_percentual: item.ipva_depreciacao_percentual !== null ? Number(item.ipva_depreciacao_percentual) : (activeConfig?.ipva_depreciacao_percentual || undefined),
+              reajuste_aluguel_anual_percentual: item.reajuste_aluguel_anual_percentual !== null ? Number(item.reajuste_aluguel_anual_percentual) : (activeConfig?.reajuste_aluguel_anual_percentual || undefined),
+
+              // IDs de depreciação
+              caminhao_depreciacao_id: item.caminhao_depreciacao_id || null,
+              implemento_depreciacao_id: item.implemento_depreciacao_id || null,
             }));
             setItens(mappedItens);
           }
@@ -320,6 +393,16 @@ export function NovaCotacaoPage() {
       descricao: novaDescricao.trim(),
       implementos: [],
       caminhao: null,
+      
+      // Taxas históricas copiadas
+      comissao_venda_percentual: configLocacao?.comissao_venda_percentual || undefined,
+      imposto_venda_ir_percentual: configLocacao?.imposto_venda_ir_percentual || undefined,
+      imposto_venda_adicional_ir_percentual: configLocacao?.imposto_venda_adicional_ir_percentual || undefined,
+      imposto_venda_csll_percentual: configLocacao?.imposto_venda_csll_percentual || undefined,
+      documentacao_valor: configLocacao?.documentacao_valor || undefined,
+      ipva_desconto_vista_percentual: configLocacao?.ipva_desconto_vista_percentual || undefined,
+      ipva_depreciacao_percentual: configLocacao?.ipva_depreciacao_percentual || undefined,
+      reajuste_aluguel_anual_percentual: configLocacao?.reajuste_aluguel_anual_percentual || undefined,
     };
     setItens(prev => [...prev, novoItem]);
     setNovaQtd(1);
@@ -365,18 +448,48 @@ export function NovaCotacaoPage() {
     setCaminhaoModalOpen(true);
   };
 
-  const handleSalvarImplemento = (implementos: ImplementoEscolha[]) => {
+  const handleSalvarImplemento = (
+    implementos: ImplementoEscolha[], 
+    tipoUso: TipoUsoDepreciacao, 
+    valor: number
+  ) => {
     if (!itemAtivo) return;
     setItens(prev => prev.map(i =>
-      i.tempId === itemAtivo ? { ...i, implementos } : i
+      i.tempId === itemAtivo ? { 
+        ...i, 
+        implementos, 
+        implemento_tipo_uso: tipoUso, 
+        implemento_valor: valor 
+      } : i
     ));
   };
 
-  const handleSalvarCaminhao = (caminhao: CaminhaoSelecionado) => {
+  const handleSalvarCaminhao = (
+    caminhao: CaminhaoSelecionado, 
+    tipoUso: TipoUsoDepreciacao, 
+    valor: number
+  ) => {
     if (!itemAtivo) return;
     setItens(prev => prev.map(i =>
-      i.tempId === itemAtivo ? { ...i, caminhao } : i
+      i.tempId === itemAtivo ? { 
+        ...i, 
+        caminhao, 
+        caminhao_tipo_uso: tipoUso, 
+        caminhao_valor: valor 
+      } : i
     ));
+  };
+
+  const handleSalvarCamposCalculo = (updatedFields: Partial<ItemLocal>) => {
+    if (!itemCalculoAtivo) return;
+    setItens(prev => prev.map(i =>
+      i.tempId === itemCalculoAtivo.tempId ? { ...i, ...updatedFields } : i
+    ));
+  };
+
+  const handleAbrirCalculo = (item: ItemLocal) => {
+    setItemCalculoAtivo(item);
+    setCalculoModalOpen(true);
   };
 
   // ── Anexos ──────────────────────────────────────────────────────────────────
@@ -458,6 +571,24 @@ export function NovaCotacaoPage() {
           implementos: item.implementos,
           caminhao_id: item.caminhao?.caminhao_id || null,
           caminhao_entre_eixo: item.caminhao?.caminhao_entre_eixo || null,
+          caminhao_tipo_uso: item.caminhao_tipo_uso || null,
+          caminhao_valor: item.caminhao_valor !== undefined ? item.caminhao_valor : null,
+          implemento_tipo_uso: item.implemento_tipo_uso || null,
+          implemento_valor: item.implemento_valor !== undefined ? item.implemento_valor : null,
+
+          // Taxas históricas vigentes
+          comissao_venda_percentual: item.comissao_venda_percentual !== undefined ? item.comissao_venda_percentual : null,
+          imposto_venda_ir_percentual: item.imposto_venda_ir_percentual !== undefined ? item.imposto_venda_ir_percentual : null,
+          imposto_venda_adicional_ir_percentual: item.imposto_venda_adicional_ir_percentual !== undefined ? item.imposto_venda_adicional_ir_percentual : null,
+          imposto_venda_csll_percentual: item.imposto_venda_csll_percentual !== undefined ? item.imposto_venda_csll_percentual : null,
+          documentacao_valor: item.documentacao_valor !== undefined ? item.documentacao_valor : null,
+          ipva_desconto_vista_percentual: item.ipva_desconto_vista_percentual !== undefined ? item.ipva_desconto_vista_percentual : null,
+          ipva_depreciacao_percentual: item.ipva_depreciacao_percentual !== undefined ? item.ipva_depreciacao_percentual : null,
+          reajuste_aluguel_anual_percentual: item.reajuste_aluguel_anual_percentual !== undefined ? item.reajuste_aluguel_anual_percentual : null,
+
+          // IDs de depreciação
+          caminhao_depreciacao_id: item.caminhao_depreciacao_id || null,
+          implemento_depreciacao_id: item.implemento_depreciacao_id || null,
         }));
 
         const { error: insItensErr } = await supabase.from('cotacao_itens').insert(itensPayload);
@@ -906,6 +1037,24 @@ export function NovaCotacaoPage() {
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
                               <button
                                 type="button"
+                                onClick={() => {
+                                  if (!item.caminhao && (!item.implementos || item.implementos.length === 0)) {
+                                    toast.warning('Seleções ausentes', 'Por favor, defina ao menos um caminhão ou um implemento para visualizar os cálculos.');
+                                    return;
+                                  }
+                                  handleAbrirCalculo(item);
+                                }}
+                                title="Planilha de Cálculos (Dados, Cash Flow, Financiamento)"
+                                className="action-btn"
+                                style={{
+                                  color: (item.caminhao || (item.implementos && item.implementos.length > 0)) ? 'var(--color-primary)' : 'var(--color-grey-400)',
+                                  borderColor: (item.caminhao || (item.implementos && item.implementos.length > 0)) ? 'rgba(249,115,22,0.2)' : '#e2e8f0',
+                                }}
+                              >
+                                <Calculator size={15} />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleDuplicarItem(item.tempId)}
                                 title="Duplicar item"
                                 className="action-btn"
@@ -984,6 +1133,8 @@ export function NovaCotacaoPage() {
         onSave={handleSalvarImplemento}
         itemDescricao={itemAtivoObj?.descricao || ''}
         implementosIniciais={itemAtivoObj?.implementos || []}
+        tipoUsoInicial={itemAtivoObj?.implemento_tipo_uso || null}
+        valorInicial={itemAtivoObj?.implemento_valor || null}
       />
 
       {/* Modal de Caminhão */}
@@ -993,6 +1144,17 @@ export function NovaCotacaoPage() {
         onSave={handleSalvarCaminhao}
         implementos={itemAtivoObj?.implementos || []}
         caminhaoInicial={itemAtivoObj?.caminhao || null}
+        tipoUsoInicial={itemAtivoObj?.caminhao_tipo_uso || null}
+        valorInicial={itemAtivoObj?.caminhao_valor || null}
+      />
+
+      {/* Modal de Planilha/Cálculos do Item */}
+      <CalculoItemModal
+        isOpen={calculoModalOpen}
+        onClose={() => { setCalculoModalOpen(false); setItemCalculoAtivo(null); }}
+        item={itemCalculoAtivo}
+        prazosCotaque={prazos}
+        onSave={handleSalvarCamposCalculo}
       />
     </DashboardLayout>
   );
