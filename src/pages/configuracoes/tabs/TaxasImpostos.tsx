@@ -25,6 +25,7 @@ export function TaxasImpostos({
   const [impostoIR, setImpostoIR] = useState<number | string>('');
   const [impostoAdicionalIR, setImpostoAdicionalIR] = useState<number | string>('');
   const [impostoCSLL, setImpostoCSLL] = useState<number | string>('');
+  const [depreciacaoContabil, setDepreciacaoContabil] = useState<number | string>('');
   const [salvando, setSalvando] = useState(false);
 
   // Sincronizar campos com dados carregados
@@ -34,6 +35,7 @@ export function TaxasImpostos({
       setImpostoIR(configuracao.imposto_venda_ir_percentual * 100);
       setImpostoAdicionalIR(configuracao.imposto_venda_adicional_ir_percentual * 100);
       setImpostoCSLL(configuracao.imposto_venda_csll_percentual * 100);
+      setDepreciacaoContabil(configuracao.depreciacao_contabil_percentual != null ? configuracao.depreciacao_contabil_percentual * 100 : '');
     }
   }, [configuracao]);
 
@@ -62,12 +64,19 @@ export function TaxasImpostos({
       return;
     }
 
+    const depreciacaoContabilVal = Number(depreciacaoContabil);
+    if (isNaN(depreciacaoContabilVal) || depreciacaoContabilVal < 0) {
+      toast.error('Erro', 'Dep. Contábil Ativo Imob. deve ser um valor válido.');
+      return;
+    }
+
     setSalvando(true);
     const { error } = await atualizarConfiguracoesLocacao(configuracao.id, {
       comissao_venda_percentual: comissaoVal,
       imposto_venda_ir_percentual: impostoIRVal / 100,
       imposto_venda_adicional_ir_percentual: impostoAdicionalIRVal / 100,
       imposto_venda_csll_percentual: impostoCSLLVal / 100,
+      depreciacao_contabil_percentual: depreciacaoContabilVal / 100,
     });
     setSalvando(false);
 
@@ -147,6 +156,39 @@ export function TaxasImpostos({
             label="CSLL (%)"
             value={impostoCSLL}
             onChange={(v) => setImpostoCSLL(v)}
+            step={0.01}
+            min={0}
+            required
+          />
+        </div>
+      </div>
+
+      {/* Seção de Depreciação Contábil */}
+      <div style={{
+        borderTop: '1px solid var(--color-grey-100)',
+        paddingTop: 'var(--spacing-20)',
+        marginTop: 'var(--spacing-20)'
+      }}>
+        <h3 style={{
+          fontSize: 'var(--font-size-sm)',
+          fontWeight: 600,
+          color: 'var(--color-grey-800)',
+          marginBottom: '4px'
+        }}>
+          Depreciação Contábil do Ativo Imobilizado
+        </h3>
+        <p style={{
+          fontSize: 'var(--font-size-xs)',
+          color: 'var(--color-grey-500)',
+          marginBottom: 'var(--spacing-16)'
+        }}>
+          Taxa anual de depreciação contábil aplicada ao ativo imobilizado (veículo + implemento).
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '24px' }}>
+          <InputNumber
+            label="Dep. Contábil Ativo Imob. (% a.a.)"
+            value={depreciacaoContabil}
+            onChange={(v) => setDepreciacaoContabil(v)}
             step={0.01}
             min={0}
             required

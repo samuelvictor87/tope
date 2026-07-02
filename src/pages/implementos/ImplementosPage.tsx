@@ -8,7 +8,7 @@ import type { OptionType } from '../../components/ui/Select';
 import { MultiSelect } from '../../components/ui/MultiSelect';
 import { Drawer } from '../../components/ui/Drawer';
 import { Button } from '../../components/ui/Button';
-import { Badge } from '../../components/ui/Badge';
+
 import { useToast } from '../../components/ui/Toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { Pagination } from '../../components/ui/Pagination';
@@ -21,92 +21,75 @@ interface Categoria {
   id: string;
   createdAt: string;
   name: string;
-  attributes: string[]; // nomes dos atributos vinculados
+  models: string[]; // nomes dos modelos vinculados
 }
 
-interface Atributo {
+interface Modelo {
   id: string;
   createdAt: string;
   categoryName: string;
   name: string;
-  options: string[]; // nomes das opções associadas
+  valor: number | null;
 }
 
-interface OpcaoAtributo {
-  id: string;
-  createdAt: string;
-  categoryName: string;
-  attributeName: string;
-  name: string;
-  weight: string; // Peso (Kg)
-  wheelbases: string[]; // Entre eixos compatíveis
+
+
+// ─── Máscara de Moeda BRL ─────────────────────────────────────────────────────
+function formatCurrency(raw: string): string {
+  // Remove tudo que não for dígito
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  // Converte em centavos → reais
+  const number = parseInt(digits, 10) / 100;
+  return number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-const WHEELBASE_OPTIONS = [
-  { value: '3400', label: '3400' },
-  { value: '3560', label: '3560' },
-  { value: '4000', label: '4000' },
-  { value: '4400', label: '4400' },
-  { value: '4600', label: '4600' },
-  { value: '4800', label: '4800' },
-  { value: '5207', label: '5207' }
-];
-
-
-
-
+function parseCurrency(formatted: string): number | null {
+  const digits = formatted.replace(/\D/g, '');
+  if (!digits) return null;
+  return parseInt(digits, 10) / 100;
+}
 
 export function ImplementosPage() {
   const toast = useToast();
   
   // Abas
-  const [activeTab, setActiveTab] = useState<'categorias' | 'atributos' | 'opcoes'>('categorias');
+  const [activeTab, setActiveTab] = useState<'categorias' | 'modelos'>('categorias');
 
 
   // Estados dos Dados
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [atributos, setAtributos] = useState<Atributo[]>([]);
-  const [opcoes, setOpcoes] = useState<OpcaoAtributo[]>([]);
+  const [modelos, setModelos] = useState<Modelo[]>([]);
 
   // Estados de Filtros
   const [searchCategory, setSearchCategory] = useState('');
   const [debouncedCategory, setDebouncedCategory] = useState('');
-  const [searchAttribute, setSearchAttribute] = useState('');
-  const [debouncedAttribute, setDebouncedAttribute] = useState('');
-  const [filterAttrCategory, setFilterAttrCategory] = useState<OptionType | null>({ value: 'Todos', label: 'Categoria (Todas)' });
-  const [searchOption, setSearchOption] = useState('');
-  const [debouncedOption, setDebouncedOption] = useState('');
-  const [filterOptCategory, setFilterOptCategory] = useState<OptionType | null>({ value: 'Todos', label: 'Categoria (Todas)' });
-  const [filterOptAttribute, setFilterOptAttribute] = useState<OptionType | null>({ value: 'Todos', label: 'Atributo (Todos)' });
+  const [searchModelo, setSearchModelo] = useState('');
+  const [debouncedModelo, setDebouncedModelo] = useState('');
+  const [filterModeloCategory, setFilterModeloCategory] = useState<OptionType | null>({ value: 'Todos', label: 'Categoria (Todas)' });
 
   // Controles de Drawers
   const [drawerCategoryOpen, setDrawerCategoryOpen] = useState(false);
-  const [drawerAttributeOpen, setDrawerAttributeOpen] = useState(false);
-  const [drawerOptionOpen, setDrawerOptionOpen] = useState(false);
+  const [drawerModelOpen, setDrawerModelOpen] = useState(false);
 
   // Entidades em Edição
   const [editingCategory, setEditingCategory] = useState<Categoria | null>(null);
-  const [editingAttribute, setEditingAttribute] = useState<Atributo | null>(null);
-  const [editingOption, setEditingOption] = useState<OpcaoAtributo | null>(null);
+  const [editingModelo, setEditingModelo] = useState<Modelo | null>(null);
 
   // Controles de Modais de Confirmação
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; type: 'categoria' | 'atributo' | 'opcao' } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; type: 'categoria' | 'modelo' } | null>(null);
 
   // Form Fields - Categoria
   const [formCategoryName, setFormCategoryName] = useState('');
-  const [formCategoryAttributes, setFormCategoryAttributes] = useState<string[]>([]);
+  const [formCategoryModels, setFormCategoryModels] = useState<string[]>([]);
 
-  // Form Fields - Atributo
-  const [formAttributeCategory, setFormAttributeCategory] = useState<OptionType | null>(null);
-  const [formAttributeName, setFormAttributeName] = useState('');
+  // Form Fields - Modelo
+  const [formModelCategory, setFormModelCategory] = useState<OptionType | null>(null);
+  const [formModelName, setFormModelName] = useState('');
+  const [formModelValor, setFormModelValor] = useState('');
 
-  // Form Fields - Opções
-  const [formOptionCategory, setFormOptionCategory] = useState<OptionType | null>(null);
-  const [formOptionAttribute, setFormOptionAttribute] = useState<OptionType | null>(null);
-  const [formOptionName, setFormOptionName] = useState('');
-  const [formOptionWeight, setFormOptionWeight] = useState('');
-  const [formOptionWheelbases, setFormOptionWheelbases] = useState<string[]>([]);
+
 
   // Estados de Carregamento e Paginação
   const [loading, setLoading] = useState(false);
@@ -116,7 +99,7 @@ export function ImplementosPage() {
   const ITEMS_PER_PAGE = 10;
 
   const [dbCategorias, setDbCategorias] = useState<OptionType[]>([]);
-  const [dbAtributos, setDbAtributos] = useState<(OptionType & { categoryId?: string })[]>([]);
+  const [dbModelos, setDbModelos] = useState<(OptionType & { categoryId?: string })[]>([]);
 
   const loadFilterOptions = async () => {
     try {
@@ -129,13 +112,13 @@ export function ImplementosPage() {
         setDbCategorias(cats.map(c => ({ value: c.id, label: c.nome })));
       }
 
-      const { data: attrs, error: err2 } = await supabase
-        .from('atributos')
+      const { data: mods, error: err2 } = await supabase
+        .from('modelos')
         .select('id, nome, categoria_id')
         .order('nome');
 
-      if (!err2 && attrs) {
-        setDbAtributos(attrs.map(a => ({ value: a.id, label: a.nome, categoryId: a.categoria_id })));
+      if (!err2 && mods) {
+        setDbModelos(mods.map(a => ({ value: a.id, label: a.nome, categoryId: a.categoria_id })));
       }
     } catch (err) {
       console.error('Erro ao buscar opções de filtros:', err);
@@ -149,7 +132,7 @@ export function ImplementosPage() {
         .from('implemento_categorias')
         .select(`
           *,
-          atributos:atributos(nome)
+          modelos:modelos(nome)
         `, { count: 'exact' });
 
       if (debouncedCategory.trim()) {
@@ -169,7 +152,7 @@ export function ImplementosPage() {
           id: item.id,
           createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
           name: item.nome,
-          attributes: item.atributos ? (item.atributos as any[]).map(a => a.nome) : []
+          models: item.modelos ? (item.modelos as any[]).map(a => a.nome) : []
         }));
         setCategorias(mapped);
         setTotalCount(count || 0);
@@ -181,24 +164,23 @@ export function ImplementosPage() {
     }
   };
 
-  const loadAtributos = async () => {
+  const loadModelos = async () => {
     setLoading(true);
     try {
       let query = supabase
-        .from('atributos')
+        .from('modelos')
         .select(`
           *,
-          categoria:implemento_categorias(nome),
-          opcoes:opcoes_atributos(nome)
+          categoria:implemento_categorias(nome)
         `, { count: 'exact' });
 
-      if (debouncedAttribute.trim()) {
-        const term = `%${debouncedAttribute.trim()}%`;
+      if (debouncedModelo.trim()) {
+        const term = `%${debouncedModelo.trim()}%`;
         query = query.ilike('nome', term);
       }
 
-      if (filterAttrCategory && filterAttrCategory.value !== 'Todos') {
-        query = query.eq('categoria_id', filterAttrCategory.value);
+      if (filterModeloCategory && filterModeloCategory.value !== 'Todos') {
+        query = query.eq('categoria_id', filterModeloCategory.value);
       }
 
       const from = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -207,16 +189,16 @@ export function ImplementosPage() {
 
       const { data, error, count } = await query;
       if (error) {
-        toast.error('Erro ao carregar atributos', error.message);
+        toast.error('Erro ao carregar modelos', error.message);
       } else if (data) {
         const mapped = data.map(item => ({
           id: item.id,
           createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
           categoryName: item.categoria ? (item.categoria as any).nome : '',
           name: item.nome,
-          options: item.opcoes ? (item.opcoes as any[]).map(o => o.nome) : []
+          valor: item.valor ?? null,
         }));
-        setAtributos(mapped);
+        setModelos(mapped);
         setTotalCount(count || 0);
       }
     } catch (err) {
@@ -226,58 +208,7 @@ export function ImplementosPage() {
     }
   };
 
-  const loadOpcoes = async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('opcoes_atributos')
-        .select(`
-          *,
-          atributo:atributos(
-            nome,
-            categoria:implemento_categorias(id, nome)
-          )
-        `, { count: 'exact' });
 
-      if (debouncedOption.trim()) {
-        const term = `%${debouncedOption.trim()}%`;
-        query = query.ilike('nome', term);
-      }
-
-      if (filterOptCategory && filterOptCategory.value !== 'Todos') {
-        query = query.eq('atributo.categoria_id', filterOptCategory.value);
-      }
-
-      if (filterOptAttribute && filterOptAttribute.value !== 'Todos') {
-        query = query.eq('atributo_id', filterOptAttribute.value);
-      }
-
-      const from = (currentPage - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
-      query = query.order('criado_em', { ascending: false }).range(from, to);
-
-      const { data, error, count } = await query;
-      if (error) {
-        toast.error('Erro ao carregar opções', error.message);
-      } else if (data) {
-        const mapped = data.map(item => ({
-          id: item.id,
-          createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
-          categoryName: item.atributo?.categoria ? (item.atributo.categoria as any).nome : '',
-          attributeName: item.atributo ? (item.atributo as any).nome : '',
-          name: item.nome,
-          weight: item.peso || '0',
-          wheelbases: item.entre_eixos || []
-        }));
-        setOpcoes(mapped);
-        setTotalCount(count || 0);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Debounce para Categorias
   useEffect(() => {
@@ -288,23 +219,16 @@ export function ImplementosPage() {
     return () => clearTimeout(handler);
   }, [searchCategory]);
 
-  // Debounce para Atributos
+  // Debounce para Modelos
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedAttribute(searchAttribute);
+      setDebouncedModelo(searchModelo);
       setCurrentPage(1);
     }, 300);
     return () => clearTimeout(handler);
-  }, [searchAttribute]);
+  }, [searchModelo]);
 
-  // Debounce para Opções
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedOption(searchOption);
-      setCurrentPage(1);
-    }, 300);
-    return () => clearTimeout(handler);
-  }, [searchOption]);
+
 
   // Carregar dados iniciais dos filtros
   useEffect(() => {
@@ -315,41 +239,33 @@ export function ImplementosPage() {
   useEffect(() => {
     if (activeTab === 'categorias') {
       loadCategorias();
-    } else if (activeTab === 'atributos') {
-      loadAtributos();
-    } else if (activeTab === 'opcoes') {
-      loadOpcoes();
+    } else if (activeTab === 'modelos') {
+      loadModelos();
     }
-  }, [activeTab, currentPage, filterAttrCategory, filterOptCategory, filterOptAttribute, debouncedCategory, debouncedAttribute, debouncedOption]);
+  }, [activeTab, currentPage, filterModeloCategory, debouncedCategory, debouncedModelo]);
 
   const filteredCategorias = categorias;
-  const filteredAtributos = atributos;
-  const filteredOpcoes = opcoes;
+  const filteredModelos = modelos;
 
   // Opções para Selects e MultiSelects dinâmicos
   const categoryOptions: OptionType[] = useMemo(() => {
     return dbCategorias;
   }, [dbCategorias]);
 
-  const attributeOptionsForSelectedCategory: OptionType[] = useMemo(() => {
-    if (!formOptionCategory) return [];
-    return dbAtributos
-      .filter((a: any) => a.categoryId === formOptionCategory.value)
-      .map(a => ({ value: a.value, label: a.label }));
-  }, [formOptionCategory, dbAtributos]);
+
 
   // Handlers Categoria (Criar/Editar/Salvar/Excluir)
   const handleOpenCreateCategory = () => {
     setEditingCategory(null);
     setFormCategoryName('');
-    setFormCategoryAttributes([]);
+    setFormCategoryModels([]);
     setDrawerCategoryOpen(true);
   };
 
   const handleOpenEditCategory = (c: Categoria) => {
     setEditingCategory(c);
     setFormCategoryName(c.name);
-    setFormCategoryAttributes(c.attributes);
+    setFormCategoryModels(c.models);
     setDrawerCategoryOpen(true);
   };
 
@@ -387,15 +303,15 @@ export function ImplementosPage() {
 
       if (catId) {
         await supabase
-          .from('atributos')
+          .from('modelos')
           .update({ categoria_id: null })
           .eq('categoria_id', catId);
 
-        if (formCategoryAttributes.length > 0) {
+        if (formCategoryModels.length > 0) {
           await supabase
-            .from('atributos')
+            .from('modelos')
             .update({ categoria_id: catId })
-            .in('nome', formCategoryAttributes);
+            .in('nome', formCategoryModels);
         }
       }
 
@@ -410,60 +326,69 @@ export function ImplementosPage() {
     }
   };
 
-  // Handlers Atributo (Criar/Editar/Salvar/Excluir)
-  const handleOpenCreateAttribute = () => {
-    setEditingAttribute(null);
-    setFormAttributeCategory(null);
-    setFormAttributeName('');
-    setDrawerAttributeOpen(true);
+  // Handlers Modelo (Criar/Editar/Salvar/Excluir)
+  const handleOpenCreateModelo = () => {
+    setEditingModelo(null);
+    setFormModelCategory(null);
+    setFormModelName('');
+    setFormModelValor('');
+    setDrawerModelOpen(true);
   };
 
-  const handleOpenEditAttribute = (a: Atributo) => {
-    setEditingAttribute(a);
+  const handleOpenEditModelo = (a: Modelo) => {
+    setEditingModelo(a);
     const catOpt = dbCategorias.find(o => o.label === a.categoryName) || null;
-    setFormAttributeCategory(catOpt);
-    setFormAttributeName(a.name);
-    setDrawerAttributeOpen(true);
+    setFormModelCategory(catOpt);
+    setFormModelName(a.name);
+    // Formata o valor existente como moeda ao abrir o drawer
+    if (a.valor !== null && a.valor !== undefined) {
+      const digits = Math.round(a.valor * 100).toString();
+      setFormModelValor(formatCurrency(digits));
+    } else {
+      setFormModelValor('');
+    }
+    setDrawerModelOpen(true);
   };
 
-  const handleSaveAttribute = async (e: React.FormEvent) => {
+  const handleSaveModelo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formAttributeCategory || !formAttributeName.trim()) {
-      toast.error('Campos obrigatórios', 'Por favor, selecione a categoria e o nome do atributo.');
+    if (!formModelCategory || !formModelName.trim()) {
+      toast.error('Campos obrigatórios', 'Por favor, selecione a categoria e o nome do modelo.');
       return;
     }
 
     setSaving(true);
     try {
-      const attributeData = {
-        categoria_id: formAttributeCategory.value,
-        nome: formAttributeName.trim()
+      const modelData = {
+        categoria_id: formModelCategory.value,
+        nome: formModelName.trim(),
+        valor: parseCurrency(formModelValor),
       };
 
-      if (editingAttribute) {
+      if (editingModelo) {
         const { error } = await supabase
-          .from('atributos')
-          .update(attributeData)
-          .eq('id', editingAttribute.id);
+          .from('modelos')
+          .update(modelData)
+          .eq('id', editingModelo.id);
         if (error) {
-          toast.error('Erro ao atualizar atributo', error.message);
+          toast.error('Erro ao atualizar modelo', error.message);
         } else {
-          toast.success('Atributo atualizado com sucesso!');
-          setDrawerAttributeOpen(false);
-          loadAtributos();
+          toast.success('Modelo atualizado com sucesso!');
+          setDrawerModelOpen(false);
+          loadModelos();
           loadFilterOptions();
         }
       } else {
         const { error } = await supabase
-          .from('atributos')
-          .insert(attributeData);
+          .from('modelos')
+          .insert(modelData);
         if (error) {
-          toast.error('Erro ao criar atributo', error.message);
+          toast.error('Erro ao criar modelo', error.message);
         } else {
-          toast.success('Novo atributo criado com sucesso!');
-          setDrawerAttributeOpen(false);
+          toast.success('Novo modelo criado com sucesso!');
+          setDrawerModelOpen(false);
           setCurrentPage(1);
-          loadAtributos();
+          loadModelos();
           loadFilterOptions();
         }
       }
@@ -474,81 +399,10 @@ export function ImplementosPage() {
     }
   };
 
-  // Handlers Opção (Criar/Editar/Salvar/Excluir)
-  const handleOpenCreateOption = () => {
-    setEditingOption(null);
-    setFormOptionCategory(null);
-    setFormOptionAttribute(null);
-    setFormOptionName('');
-    setFormOptionWeight('');
-    setFormOptionWheelbases([]);
-    setDrawerOptionOpen(true);
-  };
 
-  const handleOpenEditOption = (o: OpcaoAtributo) => {
-    setEditingOption(o);
-    const catOpt = dbCategorias.find(opt => opt.label === o.categoryName) || null;
-    setFormOptionCategory(catOpt);
-    const attrOpt = dbAtributos.find(opt => opt.label === o.attributeName && opt.categoryId === catOpt?.value) || null;
-    setFormOptionAttribute(attrOpt);
-    setFormOptionName(o.name);
-    setFormOptionWeight(o.weight);
-    setFormOptionWheelbases(o.wheelbases);
-    setDrawerOptionOpen(true);
-  };
-
-  const handleSaveOption = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formOptionCategory || !formOptionAttribute || !formOptionName.trim()) {
-      toast.error('Campos obrigatórios', 'Por favor, selecione a categoria, o atributo e o nome da opção.');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const optionData = {
-        atributo_id: formOptionAttribute.value,
-        nome: formOptionName.trim(),
-        peso: formOptionWeight.trim() || '0',
-        entre_eixos: formOptionWheelbases
-      };
-
-      if (editingOption) {
-        const { error } = await supabase
-          .from('opcoes_atributos')
-          .update(optionData)
-          .eq('id', editingOption.id);
-        if (error) {
-          toast.error('Erro ao atualizar opção', error.message);
-        } else {
-          toast.success('Opção atualizada com sucesso!');
-          setDrawerOptionOpen(false);
-          loadOpcoes();
-          loadFilterOptions();
-        }
-      } else {
-        const { error } = await supabase
-          .from('opcoes_atributos')
-          .insert(optionData);
-        if (error) {
-          toast.error('Erro ao criar opção', error.message);
-        } else {
-          toast.success('Nova opção criada com sucesso!');
-          setDrawerOptionOpen(false);
-          setCurrentPage(1);
-          loadOpcoes();
-          loadFilterOptions();
-        }
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // Exclusão Unificada
-  const handleOpenDelete = (id: string, name: string, type: 'categoria' | 'atributo' | 'opcao') => {
+  const handleOpenDelete = (id: string, name: string, type: 'categoria' | 'modelo') => {
     setDeleteTarget({ id, name, type });
     setDeleteConfirmOpen(true);
   };
@@ -569,28 +423,16 @@ export function ImplementosPage() {
           loadCategorias();
           loadFilterOptions();
         }
-      } else if (deleteTarget.type === 'atributo') {
+      } else if (deleteTarget.type === 'modelo') {
         const { error } = await supabase
-          .from('atributos')
+          .from('modelos')
           .delete()
           .eq('id', deleteTarget.id);
         if (error) {
-          toast.error('Erro ao excluir atributo', error.message);
+          toast.error('Erro ao excluir modelo', error.message);
         } else {
-          toast.success('Atributo excluído com sucesso!');
-          loadAtributos();
-          loadFilterOptions();
-        }
-      } else if (deleteTarget.type === 'opcao') {
-        const { error } = await supabase
-          .from('opcoes_atributos')
-          .delete()
-          .eq('id', deleteTarget.id);
-        if (error) {
-          toast.error('Erro ao excluir opção', error.message);
-        } else {
-          toast.success('Opção excluída com sucesso!');
-          loadOpcoes();
+          toast.success('Modelo excluído com sucesso!');
+          loadModelos();
           loadFilterOptions();
         }
       }
@@ -622,23 +464,13 @@ export function ImplementosPage() {
           </button>
           <button
             type="button"
-            className={`implementos-tab-btn ${activeTab === 'atributos' ? 'active' : ''}`}
+            className={`implementos-tab-btn ${activeTab === 'modelos' ? 'active' : ''}`}
             onClick={() => {
-              setActiveTab('atributos');
+              setActiveTab('modelos');
               setCurrentPage(1);
             }}
           >
-            Atributos
-          </button>
-          <button
-            type="button"
-            className={`implementos-tab-btn ${activeTab === 'opcoes' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('opcoes');
-              setCurrentPage(1);
-            }}
-          >
-            Opções de atributos
+            Modelos
           </button>
         </div>
       </div>
@@ -659,7 +491,7 @@ export function ImplementosPage() {
             <div style={{ width: 280 }}>
               <Input
                 type="text"
-                placeholder="Buscar por categoria ou atributo..."
+                placeholder="Buscar por categoria ou modelo..."
                 value={searchCategory}
                 onChange={e => setSearchCategory(e.target.value)}
                 style={{ height: 38 }}
@@ -681,98 +513,45 @@ export function ImplementosPage() {
           </>
         )}
 
-        {activeTab === 'atributos' && (
+        {activeTab === 'modelos' && (
           <>
             <div style={{ width: 280 }}>
               <Input
                 type="text"
-                placeholder="Buscar por atributo..."
-                value={searchAttribute}
-                onChange={e => setSearchAttribute(e.target.value)}
+                placeholder="Buscar por modelo..."
+                value={searchModelo}
+                onChange={e => setSearchModelo(e.target.value)}
                 style={{ height: 38 }}
               />
             </div>
             <div style={{ width: 200 }}>
               <Select
                 options={[{ value: 'Todos', label: 'Categoria (Todas)' }, ...categoryOptions]}
-                value={filterAttrCategory}
+                value={filterModeloCategory}
                 onChange={(opt) => {
-                  setFilterAttrCategory(opt as OptionType);
+                  setFilterModeloCategory(opt as OptionType);
                   setCurrentPage(1);
                 }}
                 placeholder="Categoria (Todas)"
               />
             </div>
             <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', marginLeft: 'var(--spacing-8)' }}>
-              {totalCount} {totalCount === 1 ? 'atributo' : 'atributos'}
+              {totalCount} {totalCount === 1 ? 'modelo' : 'modelos'}
             </span>
             <div style={{ marginLeft: 'auto' }}>
               <Button
                 variant="primary"
-                onClick={handleOpenCreateAttribute}
+                onClick={handleOpenCreateModelo}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
               >
                 <Plus size={16} weight="bold" />
-                Novo atributo
+                Novo modelo
               </Button>
             </div>
           </>
         )}
 
-        {activeTab === 'opcoes' && (
-          <>
-            <div style={{ width: 260 }}>
-              <Input
-                type="text"
-                placeholder="Buscar por opção..."
-                value={searchOption}
-                onChange={e => setSearchOption(e.target.value)}
-                style={{ height: 38 }}
-              />
-            </div>
-            <div style={{ width: 180 }}>
-              <Select
-                options={[{ value: 'Todos', label: 'Categoria (Todas)' }, ...categoryOptions]}
-                value={filterOptCategory}
-                onChange={(opt) => {
-                  setFilterOptCategory(opt as OptionType);
-                  setFilterOptAttribute({ value: 'Todos', label: 'Atributo (Todos)' });
-                  setCurrentPage(1);
-                }}
-                placeholder="Categoria (Todas)"
-              />
-            </div>
-            <div style={{ width: 180 }}>
-              <Select
-                options={[
-                  { value: 'Todos', label: 'Atributo (Todos)' },
-                  ...dbAtributos
-                    .filter((a: any) => !filterOptCategory || filterOptCategory.value === 'Todos' || a.categoryId === filterOptCategory.value)
-                    .map(a => ({ value: a.value, label: a.label }))
-                ]}
-                value={filterOptAttribute}
-                onChange={(opt) => {
-                  setFilterOptAttribute(opt as OptionType);
-                  setCurrentPage(1);
-                }}
-                placeholder="Atributo (Todos)"
-              />
-            </div>
-            <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', marginLeft: 'var(--spacing-8)' }}>
-              {totalCount} {totalCount === 1 ? 'opção' : 'opções'}
-            </span>
-            <div style={{ marginLeft: 'auto' }}>
-              <Button
-                variant="primary"
-                onClick={handleOpenCreateOption}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
-              >
-                <Plus size={16} weight="bold" />
-                Nova opção
-              </Button>
-            </div>
-          </>
-        )}
+
       </div>
 
       {/* Tabelas de Listagem */}
@@ -785,7 +564,7 @@ export function ImplementosPage() {
               <tr>
                 <th style={{ width: '20%' }}>Data</th>
                 <th style={{ width: '40%' }}>Categoria</th>
-                <th style={{ width: '30%' }}>Atributo</th>
+                <th style={{ width: '30%' }}>Modelo</th>
                 <th style={{ width: '10%', textAlign: 'right' }}>Ações</th>
               </tr>
             </thead>
@@ -807,7 +586,7 @@ export function ImplementosPage() {
                   <tr key={c.id}>
                     <td>{c.createdAt}</td>
                     <td style={{ fontWeight: 600, color: 'var(--color-grey-800)' }}>{c.name}</td>
-                    <td>{c.attributes.join(', ') || <span style={{ color: 'var(--color-grey-400)' }}>-</span>}</td>
+                    <td>{c.models.join(', ') || <span style={{ color: 'var(--color-grey-400)' }}>-</span>}</td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 4 }}>
                         <button
@@ -833,15 +612,15 @@ export function ImplementosPage() {
           </table>
         )}
 
-        {/* Tabela Atributos */}
-        {activeTab === 'atributos' && (
+        {/* Tabela Modelos */}
+        {activeTab === 'modelos' && (
           <table className="table">
             <thead>
               <tr>
-                <th style={{ width: '20%' }}>Data</th>
-                <th style={{ width: '30%' }}>Categoria</th>
-                <th style={{ width: '25%' }}>Atributo</th>
-                <th style={{ width: '15%' }}>Opções</th>
+                <th style={{ width: '18%' }}>Data</th>
+                <th style={{ width: '27%' }}>Categoria</th>
+                <th style={{ width: '33%' }}>Modelo</th>
+                <th style={{ width: '12%' }}>Valor</th>
                 <th style={{ width: '10%', textAlign: 'right' }}>Ações</th>
               </tr>
             </thead>
@@ -849,46 +628,38 @@ export function ImplementosPage() {
               {loading ? (
                 <tr>
                   <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
-                    Carregando atributos...
+                    Carregando modelos...
                   </td>
                 </tr>
-              ) : filteredAtributos.length === 0 ? (
+              ) : filteredModelos.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
-                    Nenhum atributo encontrado.
+                    Nenhum modelo encontrado.
                   </td>
                 </tr>
               ) : (
-                filteredAtributos.map(a => (
+                filteredModelos.map(a => (
                   <tr key={a.id}>
                     <td>{a.createdAt}</td>
                     <td>{a.categoryName}</td>
                     <td style={{ fontWeight: 600, color: 'var(--color-grey-800)' }}>{a.name}</td>
-                    <td>
-                      {a.options.length === 0 ? (
-                        <span style={{ color: 'var(--color-grey-400)' }}>-</span>
-                      ) : (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {a.options.map(opt => (
-                            <Badge key={opt} variant="neutral">
-                              {opt}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
+                    <td style={{ color: a.valor ? 'var(--color-grey-800)' : 'var(--color-grey-400)' }}>
+                      {a.valor
+                        ? a.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                        : '-'}
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 4 }}>
                         <button
                           className="action-btn action-btn-edit"
-                          onClick={() => handleOpenEditAttribute(a)}
+                          onClick={() => handleOpenEditModelo(a)}
                           title="Editar"
                         >
                           <Pencil size={16} />
                         </button>
                         <button
                           className="action-btn action-btn-delete"
-                          onClick={() => handleOpenDelete(a.id, a.name, 'atributo')}
+                          onClick={() => handleOpenDelete(a.id, a.name, 'modelo')}
                           title="Excluir"
                         >
                           <Trash size={16} />
@@ -902,74 +673,7 @@ export function ImplementosPage() {
           </table>
         )}
 
-        {/* Tabela Opções */}
-        {activeTab === 'opcoes' && (
-          <table className="table">
-            <thead>
-              <tr>
-                <th style={{ width: '12%' }}>Data</th>
-                <th style={{ width: '15%' }}>Categoria</th>
-                <th style={{ width: '15%' }}>Atributo</th>
-                <th style={{ width: '15%' }}>Opções</th>
-                <th style={{ width: '10%' }}>Peso (Kg)</th>
-                <th style={{ width: '25%' }}>Entre eixo (mm)</th>
-                <th style={{ width: '8%', textAlign: 'right' }}>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
-                    Carregando opções...
-                  </td>
-                </tr>
-              ) : filteredOpcoes.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
-                    Nenhuma opção encontrada.
-                  </td>
-                </tr>
-              ) : (
-                filteredOpcoes.map(o => (
-                  <tr key={o.id}>
-                    <td>{o.createdAt}</td>
-                    <td>{o.categoryName}</td>
-                    <td>{o.attributeName}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--color-grey-800)' }}>{o.name}</td>
-                    <td>{o.weight}</td>
-                    <td>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {o.wheelbases.map(wb => (
-                          <Badge key={wb} variant="neutral">
-                            {wb}
-                          </Badge>
-                        ))}
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: 4 }}>
-                        <button
-                          className="action-btn action-btn-edit"
-                          onClick={() => handleOpenEditOption(o)}
-                          title="Editar"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          className="action-btn action-btn-delete"
-                          onClick={() => handleOpenDelete(o.id, o.name, 'opcao')}
-                          title="Excluir"
-                        >
-                          <Trash size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        )}
+
           
           {/* Paginação */}
           <Pagination
@@ -977,7 +681,7 @@ export function ImplementosPage() {
             totalCount={totalCount}
             itemsPerPage={ITEMS_PER_PAGE}
             onPageChange={setCurrentPage}
-            itemLabel={activeTab === 'categorias' ? 'categorias' : activeTab === 'atributos' ? 'atributos' : 'opções'}
+            itemLabel={activeTab === 'categorias' ? 'categorias' : 'modelos'}
           />
         </div>
 
@@ -1014,161 +718,76 @@ export function ImplementosPage() {
                 required
               />
               <MultiSelect
-                label="Atributos vinculados"
-                placeholder="Selecione os atributos..."
-                options={atributos.map(a => ({ value: a.name, label: a.name }))}
-                value={formCategoryAttributes}
-                onChange={setFormCategoryAttributes}
+                label="Modelos vinculados"
+                placeholder="Selecione os modelos..."
+                options={modelos.map(a => ({ value: a.name, label: a.name }))}
+                value={formCategoryModels}
+                onChange={setFormCategoryModels}
               />
             </div>
           </div>
         </form>
       </Drawer>
 
-      {/* Drawer Atributo */}
+      {/* Drawer Modelo */}
       <Drawer
-        isOpen={drawerAttributeOpen}
-        onClose={() => setDrawerAttributeOpen(false)}
-        title={editingAttribute ? 'Editar atributo' : 'Novo atributo'}
-        subtitle="Configure os atributos vinculados a uma categoria."
+        isOpen={drawerModelOpen}
+        onClose={() => setDrawerModelOpen(false)}
+        title={editingModelo ? 'Editar modelo' : 'Novo modelo'}
+        subtitle="Configure os modelos vinculados a uma categoria."
         width="580px"
         footer={
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--spacing-12)', width: '100%' }}>
-            <Button variant="secondary" onClick={() => setDrawerAttributeOpen(false)}>
+            <Button variant="secondary" onClick={() => setDrawerModelOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="primary" onClick={handleSaveAttribute} loading={saving}>
+            <Button variant="primary" onClick={handleSaveModelo} loading={saving}>
               Salvar
             </Button>
           </div>
         }
       >
-        <form onSubmit={handleSaveAttribute} className="implemento-form-sections-container">
+        <form onSubmit={handleSaveModelo} className="implemento-form-sections-container">
           <div className="implemento-form-section">
             <div className="implemento-section-info">
-              <h3 className="implemento-section-title">Atributo</h3>
-              <p className="implemento-section-desc">Vincule o atributo a uma categoria existente.</p>
+              <h3 className="implemento-section-title">Modelo</h3>
+              <p className="implemento-section-desc">Vincule o modelo a uma categoria existente.</p>
             </div>
             <div className="implemento-section-fields">
               <Select
                 label="Categoria"
                 placeholder="Selecione a categoria..."
                 options={categoryOptions}
-                value={formAttributeCategory}
-                onChange={(opt) => setFormAttributeCategory(opt as OptionType)}
+                value={formModelCategory}
+                onChange={(opt) => setFormModelCategory(opt as OptionType)}
               />
               <Input
-                label="Nome do Atributo"
-                placeholder="Ex: Capacidade, Tipo de Baú, Modelo"
-                value={formAttributeName}
-                onChange={e => setFormAttributeName(e.target.value)}
+                label="Nome do Modelo"
+                placeholder="Ex: Frigorífico, Carga Seca, Tipo de Baú"
+                value={formModelName}
+                onChange={e => setFormModelName(e.target.value)}
                 required
+              />
+              <Input
+                label="Valor (R$)"
+                placeholder="R$ 0,00"
+                value={formModelValor}
+                onChange={e => setFormModelValor(formatCurrency(e.target.value))}
+                type="text"
               />
             </div>
           </div>
         </form>
       </Drawer>
 
-      {/* Drawer Opção de Atributo */}
-      <Drawer
-        isOpen={drawerOptionOpen}
-        onClose={() => setDrawerOptionOpen(false)}
-        title={editingOption ? 'Editar opção' : 'Nova opção'}
-        subtitle="Defina os valores das opções e pesos compatíveis."
-        width="580px"
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--spacing-12)', width: '100%' }}>
-            <Button variant="secondary" onClick={() => setDrawerOptionOpen(false)}>
-              Cancelar
-            </Button>
-            <Button variant="primary" onClick={handleSaveOption} loading={saving}>
-              Salvar
-            </Button>
-          </div>
-        }
-      >
-        <form onSubmit={handleSaveOption} className="implemento-form-sections-container">
-          <div className="implemento-form-section">
-            <div className="implemento-section-info">
-              <h3 className="implemento-section-title">Dados Básicos</h3>
-              <p className="implemento-section-desc">Selecione a categoria e o atributo correspondente.</p>
-            </div>
-            <div className="implemento-section-fields">
-              <Select
-                label="Categoria"
-                placeholder="Selecione a categoria..."
-                options={categoryOptions}
-                value={formOptionCategory}
-                onChange={(opt) => {
-                  setFormOptionCategory(opt as OptionType);
-                  setFormOptionAttribute(null); // reseta atributo quando muda a categoria
-                }}
-              />
-              <Select
-                label="Atributo"
-                placeholder={formOptionCategory ? "Selecione o atributo..." : "Selecione a categoria primeiro"}
-                options={attributeOptionsForSelectedCategory}
-                value={formOptionAttribute}
-                onChange={(opt) => setFormOptionAttribute(opt as OptionType)}
-                isDisabled={!formOptionCategory}
-              />
-              <Input
-                label="Nome da Opção"
-                placeholder="Ex: Combustível, 10000L, Sider 7m"
-                value={formOptionName}
-                onChange={e => setFormOptionName(e.target.value)}
-                required
-              />
-            </div>
-          </div>
 
-          <div className="implemento-form-section">
-            <div className="implemento-section-info">
-              <h3 className="implemento-section-title">Medidas e Compatibilidade</h3>
-              <p className="implemento-section-desc">Informe o peso estimado do implemento e os entre-eixos recomendados.</p>
-            </div>
-            <div className="implemento-section-fields">
-              <Input
-                label="Peso (Kg)"
-                placeholder="Ex: 900"
-                value={formOptionWeight}
-                onChange={e => setFormOptionWeight(e.target.value)}
-              />
-              <div>
-                <label className="input-label" style={{ display: 'block', marginBottom: 8 }}>Entre eixo compatível (mm)</label>
-                <div className="wheelbases-checkbox-grid">
-                  {WHEELBASE_OPTIONS.map(opt => {
-                    const isChecked = formOptionWheelbases.includes(opt.value);
-                    return (
-                      <label key={opt.value} className="wheelbase-checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => {
-                            if (isChecked) {
-                              setFormOptionWheelbases(prev => prev.filter(v => v !== opt.value));
-                            } else {
-                              setFormOptionWheelbases(prev => [...prev, opt.value]);
-                            }
-                          }}
-                        />
-                        {opt.label}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-      </Drawer>
 
       {/* Modal Confirmação Exclusão */}
       <ConfirmModal
         isOpen={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={handleConfirmDelete}
-        title={`Excluir ${deleteTarget?.type === 'categoria' ? 'Categoria' : deleteTarget?.type === 'atributo' ? 'Atributo' : 'Opção'}`}
+        title={`Excluir ${deleteTarget?.type === 'categoria' ? 'Categoria' : 'Modelo'}`}
         message={
           <>
             Tem certeza que deseja excluir <strong>{deleteTarget?.name}</strong>?

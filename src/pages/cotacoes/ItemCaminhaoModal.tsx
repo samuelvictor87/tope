@@ -75,8 +75,8 @@ export function ItemCaminhaoModal({
 
   const descricaoImplementos = implementos
     .map(impl => {
-      const opcoes = impl.atributos.map(a => a.opcao_nome).filter(Boolean).join(', ');
-      return `${impl.categoria_nome}${opcoes ? ` - ${opcoes}` : ''}`;
+      const attrs = impl.atributos.map(a => a.atributo_nome).filter(Boolean).join(', ');
+      return `${impl.categoria_nome}${attrs ? ` - ${attrs}` : ''}`;
     })
     .join(' | ');
 

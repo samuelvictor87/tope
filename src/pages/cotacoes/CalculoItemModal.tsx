@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Calculator, X, Calendar, FileXls } from '@phosphor-icons/react';
 import ExcelJS from 'exceljs';
 import { Button } from '../../components/ui/Button';
+import { Select } from '../../components/ui/Select';
 import { useToast } from '../../components/ui/Toast';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { buscarDepreciacaoCaminhao, buscarDepreciacaoImplemento } from '../../services/configuracoes.service';
@@ -10,11 +11,41 @@ import { supabase } from '../../lib/supabase';
 import type { ItemLocal } from './NovaCotacaoPage';
 import type { TipoUsoDepreciacao } from '../../types/configuracoes.types';
 
+// ─── Máscara de Moeda BRL ───────────────────────────────────────────────────
+function formatCurrency(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  const number = parseInt(digits, 10) / 100;
+  return number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function parseCurrency(formatted: string): number {
+  const digits = formatted.replace(/\D/g, '');
+  if (!digits) return 0;
+  return parseInt(digits, 10) / 100;
+}
+function numToMask(value: number): string {
+  if (!value) return '';
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+interface TaxasCotacao {
+  comissao_venda_percentual?: number | null;
+  imposto_venda_ir_percentual?: number | null;
+  imposto_venda_adicional_ir_percentual?: number | null;
+  imposto_venda_csll_percentual?: number | null;
+  depreciacao_contabil_percentual?: number | null;
+  documentacao_valor?: number | null;
+  ipva_desconto_vista_percentual?: number | null;
+  ipva_depreciacao_percentual?: number | null;
+  reajuste_aluguel_anual_percentual?: number | null;
+}
+
 interface CalculoItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   item: ItemLocal | null;
-  prazosCotaque: number[]; // Prazos da cotação (ex: [60, 72, 84])
+  prazosCotaque: number[];
+  taxasCotacao: TaxasCotacao;
   onSave: (updatedFields: Partial<ItemLocal>) => void;
 }
 
@@ -23,6 +54,7 @@ export function CalculoItemModal({
   onClose,
   item,
   prazosCotaque,
+  taxasCotacao,
   onSave,
 }: CalculoItemModalProps) {
   const toast = useToast();
@@ -34,9 +66,9 @@ export function CalculoItemModal({
   const [prazoSelecionado, setPrazoSelecionado] = useState<number>(60);
 
   // ── Parâmetros Locais (Editáveis) ──
-  const [caminhaoValor, setCaminhaoValor] = useState<number>(0);
+  const [caminhaoValor, setCaminhaoValor] = useState<string>('');
   const [caminhaoTipoUso, setCaminhaoTipoUso] = useState<TipoUsoDepreciacao>('Leve/Moderado');
-  const [implementoValor, setImplementoValor] = useState<number>(0);
+  const [implementoValor, setImplementoValor] = useState<string>('');
   const [implementoTipoUso, setImplementoTipoUso] = useState<TipoUsoDepreciacao>('Leve/Moderado');
 
   // Tipos de uso disponíveis de depreciação cadastrados no banco de dados
@@ -47,6 +79,9 @@ export function CalculoItemModal({
   const [depCaminhao, setDepCaminhao] = useState<any>(null);
   const [depImplemento, setDepImplemento] = useState<any>(null);
   const [loadingDep, setLoadingDep] = useState(false);
+
+  // ── Estado de salvamento ──
+  const [salvando, setSalvando] = useState(false);
 
   // ── Estado de exportação Excel ──
   const [exportando, setExportando] = useState(false);
@@ -67,7 +102,7 @@ export function CalculoItemModal({
     if (isOpen && item) {
       // Inicializa valor do caminhão (tenta caminhao_valor, se não busca preço do entre-eixos do banco)
       if (item.caminhao_valor) {
-        setCaminhaoValor(item.caminhao_valor);
+        setCaminhaoValor(numToMask(item.caminhao_valor));
       } else if (item.caminhao) {
         supabase
           .from('caminhoes_entre_eixos')
@@ -78,16 +113,16 @@ export function CalculoItemModal({
           .maybeSingle()
           .then(({ data }: { data: any }) => {
             if (data && data.preco) {
-              setCaminhaoValor(Number(data.preco));
+              setCaminhaoValor(numToMask(Number(data.preco)));
             } else {
-              setCaminhaoValor(0);
+              setCaminhaoValor('');
             }
           });
       } else {
-        setCaminhaoValor(0);
+        setCaminhaoValor('');
       }
 
-      setImplementoValor(item.implemento_valor || 0);
+      setImplementoValor(numToMask(item.implemento_valor || 0));
 
       // Buscar tipos de uso de depreciação disponíveis para o caminhão
       if (item.caminhao) {
@@ -194,8 +229,8 @@ export function CalculoItemModal({
 
   // Montar a tabela de simulação
   const linhasSimulacao = [];
-  let residualCaminhaoAcum = caminhaoValor;
-  let residualImplementoAcum = implementoValor;
+  let residualCaminhaoAcum = parseCurrency(caminhaoValor);
+  let residualImplementoAcum = parseCurrency(implementoValor);
 
   for (let ano = 1; ano <= 10; ano++) {
     const taxaCaminhao = getTaxaCaminhao(ano);
@@ -224,15 +259,16 @@ export function CalculoItemModal({
   // ── Cálculos do Resumo do Termo de Venda ──
   const anosContrato = prazoSelecionado / 12; // ex: 3
   const mesesContrato = prazoSelecionado; // ex: 36
-  const valorCompraTotal = caminhaoValor + implementoValor;
+  const valorCompraTotal = parseCurrency(caminhaoValor) + parseCurrency(implementoValor);
 
   // Linha final baseada no prazo do contrato
   const indexFinal = Math.min(linhasSimulacao.length - 1, Math.max(0, anosContrato - 1));
   const dadosFinais = linhasSimulacao[indexFinal] || { totalResidual: 0 };
   const valorVendaResidual = dadosFinais.totalResidual;
 
-  const taxaComissaoRaw = item.comissao_venda_percentual !== undefined ? Number(item.comissao_venda_percentual) : 5.8; // ex: 5.8 representando 5.8%
-  const taxaComissao = taxaComissaoRaw > 1 ? (taxaComissaoRaw / 100) : taxaComissaoRaw; // tolerância para percentual inteiro ou decimal
+  // Cálculos do Resumo usando taxas da cotação
+  const taxaComissaoRaw = (taxasCotacao?.comissao_venda_percentual) ?? 5.8;
+  const taxaComissao = taxaComissaoRaw > 1 ? (taxaComissaoRaw / 100) : taxaComissaoRaw;
   const valorComissao = valorVendaResidual * taxaComissao;
   const valorLíquidoVenda = Math.max(0, valorVendaResidual - valorComissao);
 
@@ -241,6 +277,26 @@ export function CalculoItemModal({
 
   const taxaMediaAnual = anosContrato > 0 ? (desvalorizacaoPercentual / anosContrato) : 0;
   const taxaMediaMensal = mesesContrato > 0 ? (desvalorizacaoPercentual / mesesContrato) : 0;
+
+  // ── Cálculos do Cash Flow (Apuração do Lucro e Tributação) ──
+  const taxaDepContabil = taxasCotacao?.depreciacao_contabil_percentual ?? 0.25;
+  const depContabilAcumulada = Math.min(valorCompraTotal, valorCompraTotal * taxaDepContabil * (mesesContrato / 12));
+  const valorResidualContabil = Math.max(0, valorCompraTotal - depContabilAcumulada);
+
+  const lucroVenda = valorLíquidoVenda - valorResidualContabil;
+  const baseCalculoImposto = Math.max(0, lucroVenda);
+
+  const taxaIr = taxasCotacao?.imposto_venda_ir_percentual ?? 0.15;
+  const taxaAdicionalIr = taxasCotacao?.imposto_venda_adicional_ir_percentual ?? 0.10;
+  const taxaCsll = taxasCotacao?.imposto_venda_csll_percentual ?? 0.09;
+
+  const valorIr = baseCalculoImposto * taxaIr;
+  const valorAdicionalIr = baseCalculoImposto * taxaAdicionalIr;
+  const valorCsll = baseCalculoImposto * taxaCsll;
+  const totalTributos = valorIr + valorAdicionalIr + valorCsll;
+
+  const valorLiquidoFinalVenda = Math.max(0, valorLíquidoVenda - totalTributos);
+  const variacaoPercentual = valorCompraTotal > 0 ? (valorLiquidoFinalVenda / valorCompraTotal - 1) * 100 : 0;
 
   // ── Exportar Excel ──
 
@@ -261,8 +317,8 @@ export function CalculoItemModal({
       const worksheet = workbook.getWorksheet('Dados');
       if (!worksheet) throw new Error('Aba "Dados" não encontrada na planilha.');
 
-      // 4. Substituir a célula C36 com o valor líquido de venda
-      worksheet.getCell('C36').value = valorLíquidoVenda;
+      // 4. Substituir a célula C36 com o valor líquido final de venda (após tributos)
+      worksheet.getCell('C36').value = valorLiquidoFinalVenda;
 
       // 5. Gerar o buffer e disparar o download
       const buffer = await workbook.xlsx.writeBuffer();
@@ -292,16 +348,50 @@ export function CalculoItemModal({
   };
 
   // ── Salvar Alterações ──
-  const handleConfirmar = () => {
-    onSave({
-      caminhao_valor: caminhaoValor,
+  const handleConfirmar = async () => {
+    const updatedFields: Partial<ItemLocal> = {
+      caminhao_valor: parseCurrency(caminhaoValor),
       caminhao_tipo_uso: caminhaoTipoUso,
-      implemento_valor: implementoValor,
+      implemento_valor: parseCurrency(implementoValor),
       implemento_tipo_uso: implementoTipoUso,
       caminhao_depreciacao_id: depCaminhao?.id || null,
       implemento_depreciacao_id: depImplemento?.id || null,
-    });
-    toast.success('Parâmetros salvos!', 'As configurações financeiras deste item foram atualizadas na cotação.');
+    };
+
+    // Atualiza estado local imediatamente
+    onSave(updatedFields);
+
+    // Persiste no banco se o item já existe na cotacao_itens
+    if (item?.id) {
+      setSalvando(true);
+      try {
+        const { error } = await supabase
+          .from('cotacao_itens')
+          .update({
+            caminhao_valor: updatedFields.caminhao_valor ?? null,
+            caminhao_tipo_uso: updatedFields.caminhao_tipo_uso ?? null,
+            implemento_valor: updatedFields.implemento_valor ?? null,
+            implemento_tipo_uso: updatedFields.implemento_tipo_uso ?? null,
+            caminhao_depreciacao_id: updatedFields.caminhao_depreciacao_id ?? null,
+            implemento_depreciacao_id: updatedFields.implemento_depreciacao_id ?? null,
+          })
+          .eq('id', item.id);
+
+        if (error) {
+          toast.error('Erro ao salvar no banco', error.message);
+          return;
+        }
+        toast.success('Parâmetros salvos!', 'Depreciação do item atualizada com sucesso.');
+      } catch (err: any) {
+        toast.error('Erro inesperado', err.message);
+        return;
+      } finally {
+        setSalvando(false);
+      }
+    } else {
+      toast.success('Parâmetros aplicados!', 'Salve a cotação para persistir as alterações.');
+    }
+
     onClose();
   };
 
@@ -311,7 +401,7 @@ export function CalculoItemModal({
 
   return (
     <div className="modal-overlay" onClick={handleOverlayClick} role="dialog" aria-modal="true">
-      <div className="modal" style={{ maxWidth: '880px', width: '95%' }}>
+      <div className="modal" style={{ maxWidth: '880px', width: '95%', display: 'flex', flexDirection: 'column', maxHeight: '90vh', overflow: 'hidden' }}>
         {/* Cabeçalho */}
         <div className="modal-header" style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -343,7 +433,7 @@ export function CalculoItemModal({
         }}>
           {[
             { id: 'dados', label: 'Dados' },
-            { id: 'cashflow', label: 'Cash Flow', disabled: true },
+            { id: 'cashflow', label: 'Cash Flow' },
             { id: 'financiamento', label: 'Financiamento', disabled: true },
           ].map(tab => (
             <button
@@ -372,7 +462,7 @@ export function CalculoItemModal({
         </div>
 
         {/* Corpo do Modal */}
-        <div className="modal-body" style={{ padding: '20px 24px', maxHeight: '580px', overflowY: 'auto' }}>
+        <div className="modal-body" style={{ padding: '20px 24px', flex: 1, overflowY: 'auto' }}>
           {activeTab === 'dados' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
@@ -424,15 +514,16 @@ export function CalculoItemModal({
                       Valor de Aquisição (R$)
                     </label>
                     <input
-                      type="number"
-                      value={caminhaoValor || ''}
-                      onChange={(e) => setCaminhaoValor(parseFloat(e.target.value) || 0)}
+                      type="text"
+                      value={caminhaoValor}
+                      onChange={(e) => setCaminhaoValor(formatCurrency(e.target.value))}
                       disabled={!item.caminhao}
-                      placeholder="Valor sugerido: R$ 0,00"
+                      placeholder="R$ 0,00"
                       style={{
                         width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
                         border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
-                        backgroundColor: !item.caminhao ? '#f8fafc' : '#fff', outline: 'none'
+                        backgroundColor: !item.caminhao ? '#f8fafc' : '#fff', outline: 'none',
+                        boxSizing: 'border-box',
                       }}
                     />
                   </div>
@@ -440,24 +531,15 @@ export function CalculoItemModal({
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--color-grey-500)', marginBottom: '6px' }}>
                       Depreciação (Tipo de Uso)
                     </label>
-                    <select
-                      value={caminhaoTipoUso}
-                      onChange={(e) => setCaminhaoTipoUso(e.target.value as TipoUsoDepreciacao)}
-                      disabled={!item.caminhao || caminhaoTiposDisponiveis.length <= 1}
-                      style={{
-                        width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
-                        border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
-                        backgroundColor: (!item.caminhao || caminhaoTiposDisponiveis.length <= 1) ? '#f8fafc' : '#fff', outline: 'none', cursor: 'pointer'
+                    <Select
+                      options={caminhaoTiposDisponiveis.map(tipo => ({ value: tipo, label: tipo }))}
+                      value={caminhaoTiposDisponiveis.map(tipo => ({ value: tipo, label: tipo })).find(o => o.value === caminhaoTipoUso) || null}
+                      onChange={(val: any) => {
+                        if (val) setCaminhaoTipoUso(val.value as TipoUsoDepreciacao);
                       }}
-                    >
-                      {caminhaoTiposDisponiveis.length === 0 ? (
-                        <option value="">Sem depreciação cadastrada</option>
-                      ) : (
-                        caminhaoTiposDisponiveis.map(tipo => (
-                          <option key={tipo} value={tipo}>{tipo}</option>
-                        ))
-                      )}
-                    </select>
+                      isDisabled={!item.caminhao || caminhaoTiposDisponiveis.length <= 1}
+                      placeholder={caminhaoTiposDisponiveis.length === 0 ? "Sem depreciação cadastrada" : "Selecione..."}
+                    />
                   </div>
                 </div>
 
@@ -474,15 +556,16 @@ export function CalculoItemModal({
                       Valor de Aquisição (R$)
                     </label>
                     <input
-                      type="number"
-                      value={implementoValor || ''}
-                      onChange={(e) => setImplementoValor(parseFloat(e.target.value) || 0)}
+                      type="text"
+                      value={implementoValor}
+                      onChange={(e) => setImplementoValor(formatCurrency(e.target.value))}
                       disabled={!item.implementos || item.implementos.length === 0}
                       placeholder="R$ 0,00"
                       style={{
                         width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
                         border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
-                        backgroundColor: (!item.implementos || item.implementos.length === 0) ? '#f8fafc' : '#fff', outline: 'none'
+                        backgroundColor: (!item.implementos || item.implementos.length === 0) ? '#f8fafc' : '#fff', outline: 'none',
+                        boxSizing: 'border-box',
                       }}
                     />
                   </div>
@@ -490,24 +573,15 @@ export function CalculoItemModal({
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--color-grey-500)', marginBottom: '6px' }}>
                       Depreciação (Tipo de Uso)
                     </label>
-                    <select
-                      value={implementoTipoUso}
-                      onChange={(e) => setImplementoTipoUso(e.target.value as TipoUsoDepreciacao)}
-                      disabled={(!item.implementos || item.implementos.length === 0) || implementoTiposDisponiveis.length <= 1}
-                      style={{
-                        width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)',
-                        border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
-                        backgroundColor: ((!item.implementos || item.implementos.length === 0) || implementoTiposDisponiveis.length <= 1) ? '#f8fafc' : '#fff', outline: 'none', cursor: 'pointer'
+                    <Select
+                      options={implementoTiposDisponiveis.map(tipo => ({ value: tipo, label: tipo }))}
+                      value={implementoTiposDisponiveis.map(tipo => ({ value: tipo, label: tipo })).find(o => o.value === implementoTipoUso) || null}
+                      onChange={(val: any) => {
+                        if (val) setImplementoTipoUso(val.value as TipoUsoDepreciacao);
                       }}
-                    >
-                      {implementoTiposDisponiveis.length === 0 ? (
-                        <option value="">Sem depreciação cadastrada</option>
-                      ) : (
-                        implementoTiposDisponiveis.map(tipo => (
-                          <option key={tipo} value={tipo}>{tipo}</option>
-                        ))
-                      )}
-                    </select>
+                      isDisabled={(!item.implementos || item.implementos.length === 0) || implementoTiposDisponiveis.length <= 1}
+                      placeholder={implementoTiposDisponiveis.length === 0 ? "Sem depreciação cadastrada" : "Selecione..."}
+                    />
                   </div>
                 </div>
               </div>
@@ -647,12 +721,171 @@ export function CalculoItemModal({
                           Taxa Média de Depreciação (Acumulada)
                         </span>
                         <span style={{ fontSize: '14px', color: 'var(--color-grey-800)', fontWeight: 700 }}>
-                          {(taxaMediaAnual * 100).toFixed(2)}% ao ano <span style={{ fontSize: '12px', color: 'var(--color-grey-400)' }}>|</span> {(taxaMediaMensal * 100).toFixed(2)}% ao mês
+                          {(taxaMediaAnual * 100).toFixed(2)}% ao ano{' '}<span style={{ fontSize: '12px', color: 'var(--color-grey-400)' }}>&#124;</span>{' '}{(taxaMediaMensal * 100).toFixed(2)}% ao mês
                         </span>
                       </div>
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'cashflow' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Seção 1: Depreciação Contábil do Ativo e Apuração de Lucro */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                
+                {/* Bloco Depreciação Contábil */}
+                <div style={{
+                  padding: '20px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)',
+                  backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '14px'
+                }}>
+                  <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-800)' }}>
+                      🏗️ Depreciação Contábil do Ativo
+                    </h4>
+                    <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--color-grey-450)' }}>
+                      Depreciação acumulada para fins fiscais/contábeis.
+                    </p>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[
+                      { label: 'Valor de Compra Total', val: numToMask(valorCompraTotal) },
+                      { label: `Taxa Deprec. Contábil (% a.a.)`, val: `${(taxaDepContabil * 100).toFixed(2)}%` },
+                      { label: 'Período do Contrato', val: `${mesesContrato} meses (${anosContrato.toFixed(1)} anos)` },
+                      { label: 'Depreciação Contábil Acumulada', val: numToMask(depContabilAcumulada), color: '#dc2626' },
+                      { label: 'Valor Residual Contábil', val: numToMask(valorResidualContabil), color: 'var(--color-primary)', isBold: true },
+                    ].map((row, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: idx < 4 ? '1px dashed #f1f5f9' : 'none', paddingBottom: '6px' }}>
+                        <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
+                        <span style={{ fontWeight: row.isBold ? 700 : 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bloco Apuração do Lucro */}
+                <div style={{
+                  padding: '20px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)',
+                  backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '14px'
+                }}>
+                  <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-800)' }}>
+                      📈 Apuração do Lucro de Venda
+                    </h4>
+                    <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--color-grey-450)' }}>
+                      Ganho de capital sobre a alienação do imobilizado.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[
+                      { label: 'Valor de Venda (Residual Físico)', val: numToMask(valorVendaResidual) },
+                      { label: `(-) Comissão de Venda (${(taxaComissao * 100).toFixed(1)}%)`, val: `- ${numToMask(valorComissao)}`, color: '#dc2626' },
+                      { label: 'Valor de Venda Líquido de Comissão', val: numToMask(valorLíquidoVenda) },
+                      { label: '(-) Valor Residual Contábil', val: `- ${numToMask(valorResidualContabil)}`, color: '#dc2626' },
+                      { 
+                        label: lucroVenda >= 0 ? 'Lucro na Venda' : 'Prejuízo na Venda', 
+                        val: numToMask(lucroVenda), 
+                        color: lucroVenda >= 0 ? '#16a34a' : '#dc2626',
+                        isBold: true 
+                      },
+                      { label: 'Base de Cálculo para Tributação', val: numToMask(baseCalculoImposto), isBold: true, color: 'var(--color-grey-800)' },
+                    ].map((row, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: idx < 5 ? '1px dashed #f1f5f9' : 'none', paddingBottom: '6px' }}>
+                        <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
+                        <span style={{ fontWeight: row.isBold ? 700 : 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Seção 2: Tributação e Resumo Final */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+
+                {/* Bloco Tributação */}
+                <div style={{
+                  padding: '20px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)',
+                  backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '14px'
+                }}>
+                  <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-800)' }}>
+                      💸 Tributação Sobre o Lucro de Venda
+                    </h4>
+                    <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--color-grey-450)' }}>
+                      Alíquotas incidentes sobre o lucro obtido.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[
+                      { label: `IR (${(taxaIr * 100).toFixed(1)}% s/ Lucro)`, val: numToMask(valorIr), color: valorIr > 0 ? '#dc2626' : undefined },
+                      { label: `Adicional ao IR (${(taxaAdicionalIr * 100).toFixed(1)}% s/ Lucro)`, val: numToMask(valorAdicionalIr), color: valorAdicionalIr > 0 ? '#dc2626' : undefined },
+                      { label: `CSLL (${(taxaCsll * 100).toFixed(1)}% s/ Lucro)`, val: numToMask(valorCsll), color: valorCsll > 0 ? '#dc2626' : undefined },
+                      { label: 'Total Tributos', val: numToMask(totalTributos), color: totalTributos > 0 ? '#dc2626' : undefined, isBold: true },
+                    ].map((row, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: idx < 3 ? '1px dashed #f1f5f9' : 'none', paddingBottom: '6px' }}>
+                        <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
+                        <span style={{ fontWeight: row.isBold ? 700 : 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bloco Resultado Final */}
+                <div style={{
+                  padding: '20px', border: '1px solid rgba(249,115,22,0.15)', borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'rgba(249,115,22,0.02)', display: 'flex', flexDirection: 'column', gap: '14px',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <div style={{ borderBottom: '1px solid rgba(249,115,22,0.1)', paddingBottom: '10px' }}>
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-800)' }}>
+                        💰 Resultado Final da Alienação
+                      </h4>
+                      <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--color-grey-450)' }}>
+                        Retorno líquido total de venda pós-impostos e custos.
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '14px' }}>
+                      {[
+                        { label: 'Valor de Venda Bruto', val: numToMask(valorVendaResidual) },
+                        { label: '(-) Comissão de Corretagem', val: `- ${numToMask(valorComissao)}`, color: '#dc2626' },
+                        { label: '(-) Impostos e Tributos', val: `- ${numToMask(totalTributos)}`, color: '#dc2626' },
+                      ].map((row, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: '1px dashed rgba(249,115,22,0.1)', paddingBottom: '6px' }}>
+                          <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
+                          <span style={{ fontWeight: 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{
+                    marginTop: '10px', padding: '12px', borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-primary)' }}>VALOR LÍQUIDO FINAL DE VENDA</span>
+                      <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--color-primary)' }}>
+                        {numToMask(valorLiquidoFinalVenda)}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '10px', color: 'var(--color-grey-500)', fontWeight: 500 }}>Variação vs. Compra</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: variacaoPercentual >= 0 ? '#16a34a' : '#dc2626' }}>
+                        {variacaoPercentual >= 0 ? '+' : ''}{variacaoPercentual.toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
@@ -694,8 +927,8 @@ export function CalculoItemModal({
               >
                 Cancelar
               </button>
-              <Button variant="primary" size="md" onClick={handleConfirmar}>
-                Salvar Parâmetros
+              <Button variant="primary" size="md" onClick={handleConfirmar} loading={salvando}>
+                {salvando ? 'Salvando...' : 'Salvar Parâmetros'}
               </Button>
             </div>
           </div>

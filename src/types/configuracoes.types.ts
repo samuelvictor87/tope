@@ -12,6 +12,7 @@ export interface ConfiguracaoLocacao {
   imposto_venda_ir_percentual: number;
   imposto_venda_adicional_ir_percentual: number;
   imposto_venda_csll_percentual: number;
+  depreciacao_contabil_percentual: number;
   documentacao_valor: number;
   ipva_desconto_vista_percentual: number;
   ipva_depreciacao_percentual: number;
@@ -89,6 +90,7 @@ export interface ConfiguracaoLocacaoPayload {
   imposto_venda_ir_percentual?: number;
   imposto_venda_adicional_ir_percentual?: number;
   imposto_venda_csll_percentual?: number;
+  depreciacao_contabil_percentual?: number;
   documentacao_valor?: number;
   ipva_desconto_vista_percentual?: number;
   ipva_depreciacao_percentual?: number;

@@ -49,16 +49,6 @@ export interface ItemLocal {
   implemento_tipo_uso?: TipoUsoDepreciacao;
   implemento_valor?: number;
 
-  // Taxas históricas vigentes no momento
-  comissao_venda_percentual?: number;
-  imposto_venda_ir_percentual?: number;
-  imposto_venda_adicional_ir_percentual?: number;
-  imposto_venda_csll_percentual?: number;
-  documentacao_valor?: number;
-  ipva_desconto_vista_percentual?: number;
-  ipva_depreciacao_percentual?: number;
-  reajuste_aluguel_anual_percentual?: number;
-
   // IDs correspondentes nas tabelas de depreciação do banco
   caminhao_depreciacao_id?: string | null;
   implemento_depreciacao_id?: string | null;
@@ -181,6 +171,19 @@ export function NovaCotacaoPage() {
   const [itemAtivo, setItemAtivo] = useState<string | null>(null); // tempId
   const [configLocacao, setConfigLocacao] = useState<any>(null);
 
+  const [cotacaoTab, setCotacaoTab] = useState<'dados' | 'itens'>('dados');
+
+  // ── Taxas & Despesas da cotação (globais) ──────────────────────────────────────
+  const [cotComissao, setCotComissao] = useState('');
+  const [cotIr, setCotIr] = useState('');
+  const [cotAdicionalIr, setCotAdicionalIr] = useState('');
+  const [cotCsll, setCotCsll] = useState('');
+  const [cotDepreciacaoContabil, setCotDepreciacaoContabil] = useState('');
+  const [cotDocumentacao, setCotDocumentacao] = useState('');
+  const [cotIpvaDesconto, setCotIpvaDesconto] = useState('');
+  const [cotIpvaDepreciacao, setCotIpvaDepreciacao] = useState('');
+  const [cotReajusteAluguel, setCotReajusteAluguel] = useState('');
+
   // ── Arquivos / Anexos ────────────────────────────────────────────────────────
   const [novosArquivos, setNovosArquivos] = useState<File[]>([]);
   const [anexosSalvos, setAnexosSalvos] = useState<AnexoSalvo[]>([]);
@@ -228,6 +231,18 @@ export function NovaCotacaoPage() {
         }
         if (data) {
           setConfigLocacao(data);
+          // Pré-preencher taxas da cotação com valores globais (apenas nova cotação)
+          if (!isEditMode) {
+            setCotComissao(String(data.comissao_venda_percentual ?? ''));
+            setCotIr(data.imposto_venda_ir_percentual != null ? String(+(data.imposto_venda_ir_percentual * 100).toFixed(4)) : '');
+            setCotAdicionalIr(data.imposto_venda_adicional_ir_percentual != null ? String(+(data.imposto_venda_adicional_ir_percentual * 100).toFixed(4)) : '');
+            setCotCsll(data.imposto_venda_csll_percentual != null ? String(+(data.imposto_venda_csll_percentual * 100).toFixed(4)) : '');
+            setCotDepreciacaoContabil(data.depreciacao_contabil_percentual != null ? String(+(data.depreciacao_contabil_percentual * 100).toFixed(4)) : '');
+            setCotDocumentacao(String(data.documentacao_valor ?? ''));
+            setCotIpvaDesconto(data.ipva_desconto_vista_percentual != null ? String(+(data.ipva_desconto_vista_percentual * 100).toFixed(4)) : '');
+            setCotIpvaDepreciacao(data.ipva_depreciacao_percentual != null ? String(+(data.ipva_depreciacao_percentual * 100).toFixed(4)) : '');
+            setCotReajusteAluguel(data.reajuste_aluguel_anual_percentual != null ? String(+(data.reajuste_aluguel_anual_percentual * 100).toFixed(4)) : '');
+          }
         }
       } catch (err) {
         console.error('Erro ao carregar configurações globais:', err);
@@ -275,6 +290,17 @@ export function NovaCotacaoPage() {
           setVendedor({ value: cot.vendedor.id, label: cot.vendedor.nome_completo });
         }
 
+        // Carregar taxas da cotação salvas
+        setCotComissao(cot.comissao_venda_percentual != null ? String(cot.comissao_venda_percentual) : '');
+        setCotIr(cot.imposto_venda_ir_percentual != null ? String(+(cot.imposto_venda_ir_percentual * 100).toFixed(4)) : '');
+        setCotAdicionalIr(cot.imposto_venda_adicional_ir_percentual != null ? String(+(cot.imposto_venda_adicional_ir_percentual * 100).toFixed(4)) : '');
+        setCotCsll(cot.imposto_venda_csll_percentual != null ? String(+(cot.imposto_venda_csll_percentual * 100).toFixed(4)) : '');
+        setCotDepreciacaoContabil(cot.depreciacao_contabil_percentual != null ? String(+(cot.depreciacao_contabil_percentual * 100).toFixed(4)) : '');
+        setCotDocumentacao(cot.documentacao_valor != null ? String(cot.documentacao_valor) : '');
+        setCotIpvaDesconto(cot.ipva_desconto_vista_percentual != null ? String(+(cot.ipva_desconto_vista_percentual * 100).toFixed(4)) : '');
+        setCotIpvaDepreciacao(cot.ipva_depreciacao_percentual != null ? String(+(cot.ipva_depreciacao_percentual * 100).toFixed(4)) : '');
+        setCotReajusteAluguel(cot.reajuste_aluguel_anual_percentual != null ? String(+(cot.reajuste_aluguel_anual_percentual * 100).toFixed(4)) : '');
+
         // Carregar Anexos
         const { data: anxs } = await supabase
           .from('cotacao_anexos')
@@ -307,16 +333,6 @@ export function NovaCotacaoPage() {
               caminhao_valor: item.caminhao_valor !== null ? Number(item.caminhao_valor) : undefined,
               implemento_tipo_uso: item.implemento_tipo_uso || undefined,
               implemento_valor: item.implemento_valor !== null ? Number(item.implemento_valor) : undefined,
-
-              // Taxas históricas
-              comissao_venda_percentual: item.comissao_venda_percentual !== null ? Number(item.comissao_venda_percentual) : (activeConfig?.comissao_venda_percentual || undefined),
-              imposto_venda_ir_percentual: item.imposto_venda_ir_percentual !== null ? Number(item.imposto_venda_ir_percentual) : (activeConfig?.imposto_venda_ir_percentual || undefined),
-              imposto_venda_adicional_ir_percentual: item.imposto_venda_adicional_ir_percentual !== null ? Number(item.imposto_venda_adicional_ir_percentual) : (activeConfig?.imposto_venda_adicional_ir_percentual || undefined),
-              imposto_venda_csll_percentual: item.imposto_venda_csll_percentual !== null ? Number(item.imposto_venda_csll_percentual) : (activeConfig?.imposto_venda_csll_percentual || undefined),
-              documentacao_valor: item.documentacao_valor !== null ? Number(item.documentacao_valor) : (activeConfig?.documentacao_valor || undefined),
-              ipva_desconto_vista_percentual: item.ipva_desconto_vista_percentual !== null ? Number(item.ipva_desconto_vista_percentual) : (activeConfig?.ipva_desconto_vista_percentual || undefined),
-              ipva_depreciacao_percentual: item.ipva_depreciacao_percentual !== null ? Number(item.ipva_depreciacao_percentual) : (activeConfig?.ipva_depreciacao_percentual || undefined),
-              reajuste_aluguel_anual_percentual: item.reajuste_aluguel_anual_percentual !== null ? Number(item.reajuste_aluguel_anual_percentual) : (activeConfig?.reajuste_aluguel_anual_percentual || undefined),
 
               // IDs de depreciação
               caminhao_depreciacao_id: item.caminhao_depreciacao_id || null,
@@ -394,15 +410,7 @@ export function NovaCotacaoPage() {
       implementos: [],
       caminhao: null,
       
-      // Taxas históricas copiadas
-      comissao_venda_percentual: configLocacao?.comissao_venda_percentual || undefined,
-      imposto_venda_ir_percentual: configLocacao?.imposto_venda_ir_percentual || undefined,
-      imposto_venda_adicional_ir_percentual: configLocacao?.imposto_venda_adicional_ir_percentual || undefined,
-      imposto_venda_csll_percentual: configLocacao?.imposto_venda_csll_percentual || undefined,
-      documentacao_valor: configLocacao?.documentacao_valor || undefined,
-      ipva_desconto_vista_percentual: configLocacao?.ipva_desconto_vista_percentual || undefined,
-      ipva_depreciacao_percentual: configLocacao?.ipva_depreciacao_percentual || undefined,
-      reajuste_aluguel_anual_percentual: configLocacao?.reajuste_aluguel_anual_percentual || undefined,
+      // (taxas são globais da cotação, não do item)
     };
     setItens(prev => [...prev, novoItem]);
     setNovaQtd(1);
@@ -543,8 +551,18 @@ export function NovaCotacaoPage() {
         tipo_placa: tipoPlaca?.value as 'Comum' | 'ANTT',
         descricao: descricao || null,
         detalhamento_ativo: detalhamentoAtivo,
-        status: status?.value as 'Em avaliação' | 'Em orçamento' | 'Completo',
+        status: status?.value as 'Em avalição' | 'Em orçamento' | 'Completo',
         criado_por: user?.id || null,
+        // ── Taxas & Despesas globais da cotação ──
+        comissao_venda_percentual: cotComissao !== '' ? parseFloat(cotComissao) : null,
+        imposto_venda_ir_percentual: cotIr !== '' ? parseFloat(cotIr) / 100 : null,
+        imposto_venda_adicional_ir_percentual: cotAdicionalIr !== '' ? parseFloat(cotAdicionalIr) / 100 : null,
+        imposto_venda_csll_percentual: cotCsll !== '' ? parseFloat(cotCsll) / 100 : null,
+        depreciacao_contabil_percentual: cotDepreciacaoContabil !== '' ? parseFloat(cotDepreciacaoContabil) / 100 : null,
+        documentacao_valor: cotDocumentacao !== '' ? parseFloat(cotDocumentacao) : null,
+        ipva_desconto_vista_percentual: cotIpvaDesconto !== '' ? parseFloat(cotIpvaDesconto) / 100 : null,
+        ipva_depreciacao_percentual: cotIpvaDepreciacao !== '' ? parseFloat(cotIpvaDepreciacao) / 100 : null,
+        reajuste_aluguel_anual_percentual: cotReajusteAluguel !== '' ? parseFloat(cotReajusteAluguel) / 100 : null,
       };
 
       let activeCotacaoId = id;
@@ -575,16 +593,6 @@ export function NovaCotacaoPage() {
           caminhao_valor: item.caminhao_valor !== undefined ? item.caminhao_valor : null,
           implemento_tipo_uso: item.implemento_tipo_uso || null,
           implemento_valor: item.implemento_valor !== undefined ? item.implemento_valor : null,
-
-          // Taxas históricas vigentes
-          comissao_venda_percentual: item.comissao_venda_percentual !== undefined ? item.comissao_venda_percentual : null,
-          imposto_venda_ir_percentual: item.imposto_venda_ir_percentual !== undefined ? item.imposto_venda_ir_percentual : null,
-          imposto_venda_adicional_ir_percentual: item.imposto_venda_adicional_ir_percentual !== undefined ? item.imposto_venda_adicional_ir_percentual : null,
-          imposto_venda_csll_percentual: item.imposto_venda_csll_percentual !== undefined ? item.imposto_venda_csll_percentual : null,
-          documentacao_valor: item.documentacao_valor !== undefined ? item.documentacao_valor : null,
-          ipva_desconto_vista_percentual: item.ipva_desconto_vista_percentual !== undefined ? item.ipva_desconto_vista_percentual : null,
-          ipva_depreciacao_percentual: item.ipva_depreciacao_percentual !== undefined ? item.ipva_depreciacao_percentual : null,
-          reajuste_aluguel_anual_percentual: item.reajuste_aluguel_anual_percentual !== undefined ? item.reajuste_aluguel_anual_percentual : null,
 
           // IDs de depreciação
           caminhao_depreciacao_id: item.caminhao_depreciacao_id || null,
@@ -645,7 +653,7 @@ export function NovaCotacaoPage() {
     return (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
         {implementos.map((impl, i) => {
-          const opcoes = impl.atributos.map(a => a.opcao_nome).filter(Boolean).join(', ');
+          const attrs = impl.atributos.map(a => a.atributo_nome).filter(Boolean).join(', ');
           return (
             <span key={i} style={{
               display: 'inline-block', fontSize: '11px', fontWeight: 500,
@@ -653,7 +661,7 @@ export function NovaCotacaoPage() {
               backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0',
               color: 'var(--color-grey-700)',
             }}>
-              {impl.categoria_nome}{opcoes ? ` (${opcoes})` : ''}
+              {impl.categoria_nome}{attrs ? ` (${attrs})` : ''}
             </span>
           );
         })}
@@ -709,7 +717,47 @@ export function NovaCotacaoPage() {
           </div>
         </div>
 
+        {/* ─── Abas da Cotação ─── */}
+        <div style={{
+          display: 'flex', borderBottom: '1px solid #e2e8f0',
+          backgroundColor: '#f8fafc', padding: '0 0', gap: '0',
+          marginBottom: '24px', borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
+          border: '1px solid #e2e8f0', overflow: 'hidden',
+        }}>
+          {([
+            { id: 'dados', label: 'Dados Gerais', icon: '📋' },
+            { id: 'itens', label: 'Itens da Cotação', icon: '🚚' },
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setCotacaoTab(tab.id)}
+              style={{
+                flex: 1,
+                padding: '14px 24px',
+                border: 'none',
+                borderBottom: cotacaoTab === tab.id ? '2px solid var(--color-primary)' : '2px solid transparent',
+                background: cotacaoTab === tab.id ? '#fff' : 'transparent',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                color: cotacaoTab === tab.id ? 'var(--color-primary)' : 'var(--color-grey-500)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                transition: 'all 0.15s',
+              }}
+            >
+              <span>{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {/* 1. SEÇÃO CLIENTE */}
+        {cotacaoTab === 'dados' && (
+        <>
         <div className="cotacao-card">
           <h3 className="cotacao-card-title">
             <CheckCircle size={20} />
@@ -817,7 +865,117 @@ export function NovaCotacaoPage() {
           </div>
         </div>
 
-        {/* 3. ITENS DA COTAÇÃO */}
+        {/* 3. TAXAS & DESPESAS DA COTAÇÃO */}
+        <div className="cotacao-card">
+          <h3 className="cotacao-card-title">
+            <span style={{ fontSize: '18px' }}>🏦</span>
+            Taxas &amp; Despesas
+          </h3>
+          <p style={{ fontSize: '12px', color: 'var(--color-grey-500)', marginBottom: '20px', marginTop: '-4px' }}>
+            Parâmetros financeiros globais desta cotação. Pré-preenchidos com as configurações globais do sistema.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+
+            {/* Card Taxas e Impostos */}
+            <div style={{
+              padding: '20px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)',
+              backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '16px'
+            }}>
+              <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--color-grey-900)' }}>
+                  Taxas e Impostos
+                </h4>
+                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--color-grey-400)' }}>
+                  Encargos aplicados na venda pós-locação.
+                </p>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {[
+                  { label: 'Comissão (%)', value: cotComissao, set: setCotComissao, hint: '5.8' },
+                  { label: 'IR (%)', value: cotIr, set: setCotIr, hint: '15' },
+                  { label: 'Adicional IR (%)', value: cotAdicionalIr, set: setCotAdicionalIr, hint: '10' },
+                  { label: 'CSLL (%)', value: cotCsll, set: setCotCsll, hint: '9' },
+                  { label: 'Dep. Contábil Ativo Imob. (% a.a.)', value: cotDepreciacaoContabil, set: setCotDepreciacaoContabil, hint: '20' },
+                ].map(({ label, value, set, hint }) => (
+                  <div key={label}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--color-grey-600)', marginBottom: '4px' }}>
+                      {label}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={value}
+                      onChange={e => set(e.target.value)}
+                      placeholder={hint}
+                      style={{
+                        width: '100%', padding: '8px 10px', borderRadius: 'var(--radius-md)',
+                        border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
+                        backgroundColor: '#fff', outline: 'none', boxSizing: 'border-box',
+                        transition: 'border-color 0.15s',
+                      }}
+                      onFocus={e => (e.target.style.borderColor = 'var(--color-primary)')}
+                      onBlur={e => (e.target.style.borderColor = '#e2e8f0')}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Card Despesas Operacionais */}
+            <div style={{
+              padding: '20px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)',
+              backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '16px'
+            }}>
+              <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--color-grey-900)' }}>
+                  Despesas Operacionais
+                </h4>
+                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--color-grey-400)' }}>
+                  Custos operacionais e licenciamento de veículos.
+                </p>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {[
+                  { label: 'Documentação (R$)', value: cotDocumentacao, set: setCotDocumentacao, hint: '1000' },
+                  { label: 'IPVA desconto à vista (%)', value: cotIpvaDesconto, set: setCotIpvaDesconto, hint: '3' },
+                  { label: 'IPVA depreciação (%)', value: cotIpvaDepreciacao, set: setCotIpvaDepreciacao, hint: '15' },
+                  { label: 'Reajuste anual aluguel (%)', value: cotReajusteAluguel, set: setCotReajusteAluguel, hint: '4' },
+                ].map(({ label, value, set, hint }) => (
+                  <div key={label}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--color-grey-600)', marginBottom: '4px' }}>
+                      {label}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={value}
+                      onChange={e => set(e.target.value)}
+                      placeholder={hint}
+                      style={{
+                        width: '100%', padding: '8px 10px', borderRadius: 'var(--radius-md)',
+                        border: '1px solid #e2e8f0', fontSize: '13px', color: 'var(--color-grey-800)',
+                        backgroundColor: '#fff', outline: 'none', boxSizing: 'border-box',
+                        transition: 'border-color 0.15s',
+                      }}
+                      onFocus={e => (e.target.style.borderColor = 'var(--color-primary)')}
+                      onBlur={e => (e.target.style.borderColor = '#e2e8f0')}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        </>
+        )}
+
+        {/* 4. ITENS DA COTAÇÃO */}
+        {cotacaoTab === 'itens' && (
+        <>
         <div className="cotacao-card">
           {/* Toggle de detalhamento */}
           <div className="detalhamento-toggle-row" style={{ marginBottom: detalhamentoAtivo ? '20px' : '0' }}>
@@ -1081,7 +1239,7 @@ export function NovaCotacaoPage() {
           )}
         </div>
 
-        {/* 4. ANEXOS */}
+        {/* ANEXOS */}
         <div className="cotacao-card">
           <h3 className="cotacao-card-title">
             <FileArrowUp size={20} />
@@ -1124,6 +1282,8 @@ export function NovaCotacaoPage() {
             </div>
           )}
         </div>
+        </>
+        )}
       </form>
 
       {/* Modal de Implementos */}
@@ -1154,6 +1314,17 @@ export function NovaCotacaoPage() {
         onClose={() => { setCalculoModalOpen(false); setItemCalculoAtivo(null); }}
         item={itemCalculoAtivo}
         prazosCotaque={prazos}
+        taxasCotacao={{
+          comissao_venda_percentual: cotComissao !== '' ? parseFloat(cotComissao) : undefined,
+          imposto_venda_ir_percentual: cotIr !== '' ? parseFloat(cotIr) / 100 : undefined,
+          imposto_venda_adicional_ir_percentual: cotAdicionalIr !== '' ? parseFloat(cotAdicionalIr) / 100 : undefined,
+          imposto_venda_csll_percentual: cotCsll !== '' ? parseFloat(cotCsll) / 100 : undefined,
+          depreciacao_contabil_percentual: cotDepreciacaoContabil !== '' ? parseFloat(cotDepreciacaoContabil) / 100 : undefined,
+          documentacao_valor: cotDocumentacao !== '' ? parseFloat(cotDocumentacao) : undefined,
+          ipva_desconto_vista_percentual: cotIpvaDesconto !== '' ? parseFloat(cotIpvaDesconto) / 100 : undefined,
+          ipva_depreciacao_percentual: cotIpvaDepreciacao !== '' ? parseFloat(cotIpvaDepreciacao) / 100 : undefined,
+          reajuste_aluguel_anual_percentual: cotReajusteAluguel !== '' ? parseFloat(cotReajusteAluguel) / 100 : undefined,
+        }}
         onSave={handleSalvarCamposCalculo}
       />
     </DashboardLayout>
