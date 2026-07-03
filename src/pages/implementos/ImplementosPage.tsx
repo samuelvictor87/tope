@@ -99,7 +99,7 @@ export function ImplementosPage() {
   const ITEMS_PER_PAGE = 10;
 
   const [dbCategorias, setDbCategorias] = useState<OptionType[]>([]);
-  const [dbModelos, setDbModelos] = useState<(OptionType & { categoryId?: string })[]>([]);
+  const [_dbModelos, setDbModelos] = useState<(OptionType & { categoryId?: string })[]>([]);
 
   const loadFilterOptions = async () => {
     try {

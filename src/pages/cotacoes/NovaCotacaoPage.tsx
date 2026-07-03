@@ -169,7 +169,7 @@ export function NovaCotacaoPage() {
   const [calculoModalOpen, setCalculoModalOpen] = useState(false);
   const [itemCalculoAtivo, setItemCalculoAtivo] = useState<ItemLocal | null>(null);
   const [itemAtivo, setItemAtivo] = useState<string | null>(null); // tempId
-  const [configLocacao, setConfigLocacao] = useState<any>(null);
+  const [_configLocacao, setConfigLocacao] = useState<any>(null);
 
   const [cotacaoTab, setCotacaoTab] = useState<'dados' | 'itens'>('dados');
 
@@ -261,7 +261,7 @@ export function NovaCotacaoPage() {
       setLoadingData(true);
       try {
         // Carrega configurações de locação vigentes no momento
-        const { data: activeConfig } = await supabase
+        const { data: _activeConfig } = await supabase
           .from('cal_configuracoes_locacao')
           .select('*')
           .order('criado_em', { ascending: false })

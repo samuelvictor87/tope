@@ -1,7 +1,7 @@
 // pages/cotacoes/CalculoItemModal.tsx — TOPE
 import { useState, useEffect, useRef } from 'react';
 import { Calculator, X, Calendar, FileXls, Info } from '@phosphor-icons/react';
-import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useToast } from '../../components/ui/Toast';
@@ -377,19 +377,67 @@ export function CalculoItemModal({
       if (!response.ok) throw new Error('Não foi possível carregar a planilha base.');
       const arrayBuffer = await response.arrayBuffer();
 
-      // 2. Carregar com ExcelJS
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(arrayBuffer);
+      // 2. Abrir o xlsx como ZIP (xlsx = ZIP de XMLs)
+      const zip = await JSZip.loadAsync(arrayBuffer);
 
-      // 3. Acessar a aba "Dados"
-      const worksheet = workbook.getWorksheet('Dados');
-      if (!worksheet) throw new Error('Aba "Dados" não encontrada na planilha.');
+      // 3. Localizar qual arquivo XML corresponde à aba "Dados"
+      const workbookXmlStr = await zip.file('xl/workbook.xml')?.async('string');
+      if (!workbookXmlStr) throw new Error('Arquivo xlsx inválido.');
 
-      // 4. Substituir a célula C36 com o valor líquido final de venda (após tributos)
-      worksheet.getCell('C36').value = valorLiquidoFinalVenda;
+      const wbDoc = new DOMParser().parseFromString(workbookXmlStr, 'application/xml');
+      const sheets = wbDoc.getElementsByTagName('sheet');
+      let rId = '';
+      for (let i = 0; i < sheets.length; i++) {
+        if (sheets[i].getAttribute('name') === 'Dados') {
+          rId = sheets[i].getAttribute('r:id') ||
+                sheets[i].getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') || '';
+          break;
+        }
+      }
+      if (!rId) throw new Error('Aba "Dados" não encontrada no workbook.');
 
-      // 5. Gerar o buffer e disparar o download
-      const buffer = await workbook.xlsx.writeBuffer();
+      // 4. Resolver o rId para o caminho do arquivo da aba
+      const relsXmlStr = await zip.file('xl/_rels/workbook.xml.rels')?.async('string');
+      if (!relsXmlStr) throw new Error('Relacionamentos do workbook não encontrados.');
+
+      const relsDoc = new DOMParser().parseFromString(relsXmlStr, 'application/xml');
+      const rels = relsDoc.getElementsByTagName('Relationship');
+      let sheetPath = '';
+      for (let i = 0; i < rels.length; i++) {
+        if (rels[i].getAttribute('Id') === rId) {
+          sheetPath = 'xl/' + rels[i].getAttribute('Target');
+          break;
+        }
+      }
+      if (!sheetPath) throw new Error('Caminho da aba "Dados" não encontrado.');
+
+      // 5. Ler o XML da aba e modificar APENAS a célula C36
+      let sheetXml = await zip.file(sheetPath)?.async('string');
+      if (!sheetXml) throw new Error('Conteúdo da aba "Dados" não encontrado.');
+
+      // 5. Substituir apenas C29 (valor caminhão) e C30 (valor implemento)
+      // Essas células são valores puros, sem fórmulas — substituição direta e segura
+      const substituirValorCelula = (xml: string, celRef: string, novoValor: number): string => {
+        // Regex para encontrar a célula pelo atributo r="CELREF"
+        const regex = new RegExp(`(<c\\s+r="${celRef}"[^>]*>)([\\s\\S]*?)(</c>)`);
+        const match = xml.match(regex);
+        if (!match) return xml;
+        // Substituir o conteúdo interno mantendo a tag de abertura e fechamento
+        return xml.replace(regex, `${match[1]}<v>${novoValor}</v>${match[3]}`);
+      };
+
+      sheetXml = substituirValorCelula(sheetXml, 'C29', parseCurrency(caminhaoValor));
+      sheetXml = substituirValorCelula(sheetXml, 'C30', parseCurrency(implementoValor));
+
+      // 6. Salvar o XML modificado de volta no ZIP
+      zip.file(sheetPath, sheetXml);
+
+      // 7. Gerar o buffer com compressão DEFLATE (mesmo que o original) e disparar o download
+      const buffer = await zip.generateAsync({
+        type: 'arraybuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 9 },
+      });
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
@@ -1419,7 +1467,7 @@ export function CalculoItemModal({
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '14px' }}>
-                      {itensResultadoFinal.map((row, idx) => (
+                      {itensResultadoFinal.map((row) => (
                         <div key={row.id} style={{ position: 'relative', borderBottom: '1px dashed rgba(249,115,22,0.1)', paddingBottom: '8px', paddingTop: '4px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
