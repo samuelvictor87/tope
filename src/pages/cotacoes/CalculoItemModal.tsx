@@ -1,6 +1,6 @@
 // pages/cotacoes/CalculoItemModal.tsx — TOPE
-import { useState, useEffect } from 'react';
-import { Calculator, X, Calendar, FileXls } from '@phosphor-icons/react';
+import { useState, useEffect, useRef } from 'react';
+import { Calculator, X, Calendar, FileXls, Info } from '@phosphor-icons/react';
 import ExcelJS from 'exceljs';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
@@ -38,6 +38,8 @@ interface TaxasCotacao {
   ipva_desconto_vista_percentual?: number | null;
   ipva_depreciacao_percentual?: number | null;
   reajuste_aluguel_anual_percentual?: number | null;
+  meses_antes_aluguel?: number | null;
+  meses_depois_aluguel?: number | null;
 }
 
 interface CalculoItemModalProps {
@@ -61,6 +63,28 @@ export function CalculoItemModal({
 
   // ── Abas Principais ──
   const [activeTab, setActiveTab] = useState<'dados' | 'cashflow' | 'financiamento'>('dados');
+  const [explicacaoAtiva, setExplicacaoAtiva] = useState<string | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  // Estados para Financiamento
+  const [taxasFinanciamentoDb, setTaxasFinanciamentoDb] = useState<{ [prazo: number]: number }>({});
+  const [jurosSimulado, setJurosSimulado] = useState<number>(0.0101);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (explicacaoAtiva && popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+        const target = event.target as HTMLElement;
+        const isIconButton = target.closest('button[title="Ver fórmula de cálculo"]');
+        if (!isIconButton) {
+          setExplicacaoAtiva(null);
+        }
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [explicacaoAtiva]);
 
   // ── Filtro/Prazo selecionado para a simulação ──
   const [prazoSelecionado, setPrazoSelecionado] = useState<number>(60);
@@ -175,8 +199,36 @@ export function CalculoItemModal({
       } else {
         setImplementoTiposDisponiveis([]);
       }
+
+      // Buscar taxas de financiamento no banco de dados
+      supabase
+        .from('cal_taxas_financiamento')
+        .select('prazo, juros_mensal_percentual')
+        .then(({ data, error }) => {
+          if (data && !error) {
+            const mapa: { [prazo: number]: number } = {};
+            data.forEach((taxaObj: any) => {
+              const prazoNum = parseInt(taxaObj.prazo);
+              if (!isNaN(prazoNum)) {
+                mapa[prazoNum] = taxaObj.juros_mensal_percentual / 100;
+              }
+            });
+            setTaxasFinanciamentoDb(mapa);
+            
+            // Inicializar com o prazo atual
+            if (mapa[prazoSelecionado] !== undefined) {
+              setJurosSimulado(mapa[prazoSelecionado]);
+            }
+          }
+        });
     }
   }, [item, isOpen]);
+
+  useEffect(() => {
+    if (taxasFinanciamentoDb[prazoSelecionado] !== undefined) {
+      setJurosSimulado(taxasFinanciamentoDb[prazoSelecionado]);
+    }
+  }, [prazoSelecionado, taxasFinanciamentoDb]);
 
   // Carregar as regras de depreciação vigentes do Banco de Dados
   useEffect(() => {
@@ -261,7 +313,12 @@ export function CalculoItemModal({
   const mesesContrato = prazoSelecionado; // ex: 36
   const valorCompraTotal = parseCurrency(caminhaoValor) + parseCurrency(implementoValor);
 
-  // Linha final baseada no prazo do contrato
+  const mesesAntes = taxasCotacao?.meses_antes_aluguel ?? 1;
+  const mesesDepois = taxasCotacao?.meses_depois_aluguel ?? 3;
+  const mesesTotal = mesesContrato + mesesAntes + mesesDepois;
+  const anosTotal = mesesTotal / 12;
+
+  // Linha final baseada no prazo do contrato (apenas meses de aluguel)
   const indexFinal = Math.min(linhasSimulacao.length - 1, Math.max(0, anosContrato - 1));
   const dadosFinais = linhasSimulacao[indexFinal] || { totalResidual: 0 };
   const valorVendaResidual = dadosFinais.totalResidual;
@@ -280,7 +337,8 @@ export function CalculoItemModal({
 
   // ── Cálculos do Cash Flow (Apuração do Lucro e Tributação) ──
   const taxaDepContabil = taxasCotacao?.depreciacao_contabil_percentual ?? 0.25;
-  const depContabilAcumulada = Math.min(valorCompraTotal, valorCompraTotal * taxaDepContabil * (mesesContrato / 12));
+  const depContabilMensal = (valorCompraTotal * taxaDepContabil) / 12;
+  const depContabilAcumulada = Math.min(valorCompraTotal, valorCompraTotal * taxaDepContabil * (mesesTotal / 12));
   const valorResidualContabil = Math.max(0, valorCompraTotal - depContabilAcumulada);
 
   const lucroVenda = valorLíquidoVenda - valorResidualContabil;
@@ -297,6 +355,16 @@ export function CalculoItemModal({
 
   const valorLiquidoFinalVenda = Math.max(0, valorLíquidoVenda - totalTributos);
   const variacaoPercentual = valorCompraTotal > 0 ? (valorLiquidoFinalVenda / valorCompraTotal - 1) * 100 : 0;
+
+  // ── Cálculos de Financiamento (Tabela PRICE) ──
+  const nFinanc = prazoSelecionado;
+  const iFinanc = jurosSimulado;
+  let parcelaMensal = 0;
+  if (iFinanc === 0) {
+    parcelaMensal = valorCompraTotal / nFinanc;
+  } else {
+    parcelaMensal = valorCompraTotal * (iFinanc * Math.pow(1 + iFinanc, nFinanc)) / (Math.pow(1 + iFinanc, nFinanc) - 1);
+  }
 
   // ── Exportar Excel ──
 
@@ -399,6 +467,310 @@ export function CalculoItemModal({
     if (e.target === e.currentTarget) onClose();
   };
 
+  const itensDepreciacaoContabil = [
+    {
+      id: 'valorCompra',
+      label: 'Valor de Compra Total',
+      val: numToMask(valorCompraTotal),
+      temCalculo: true,
+      explicacao: (
+        <>
+          Soma do valor de aquisição do caminhão e dos implementos:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(parseCurrency(caminhaoValor))} (Caminhão) + {numToMask(parseCurrency(implementoValor))} (Implemento) = {numToMask(valorCompraTotal)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'taxaDepContabil',
+      label: 'Taxa Deprec. Contábil (% a.a.)',
+      val: `${(taxaDepContabil * 100).toFixed(2)}%`,
+      temCalculo: false
+    },
+    {
+      id: 'depContabilMensal',
+      label: 'Depreciação Contábil Mensal',
+      val: numToMask(depContabilMensal),
+      temCalculo: true,
+      explicacao: (
+        <>
+          Depreciação anual do ativo dividida por 12 meses:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            ({numToMask(valorCompraTotal)} * {(taxaDepContabil * 100).toFixed(2)}%) / 12 = {numToMask(depContabilMensal)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'periodoDepreciacao',
+      label: 'Período de Depreciação',
+      val: `${mesesTotal} meses (${anosTotal.toFixed(2)} anos)`,
+      temCalculo: true,
+      explicacao: (
+        <>
+          Ciclo de vida total considerado para depreciação:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {mesesContrato} meses (Aluguel) + {mesesAntes} meses (Prep.) + {mesesDepois} meses (Venda) = {mesesTotal} meses ({anosTotal.toFixed(2)} anos)
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'depContabilAcumulada',
+      label: 'Depreciação Contábil Acumulada',
+      val: numToMask(depContabilAcumulada),
+      color: '#dc2626',
+      temCalculo: true,
+      explicacao: (
+        <>
+          Depreciação mensal acumulada ao longo do período total:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(depContabilMensal)} (Dep. Mensal) * {mesesTotal} meses = {numToMask(depContabilAcumulada)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'valorResidualContabil',
+      label: 'Valor Residual Contábil',
+      val: numToMask(valorResidualContabil),
+      color: 'var(--color-primary)',
+      isBold: true,
+      temCalculo: true,
+      explicacao: (
+        <>
+          Valor contábil líquido do ativo após a depreciação acumulada:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(valorCompraTotal)} (Compra) - {numToMask(depContabilAcumulada)} (Deprec. Acumulada) = {numToMask(valorResidualContabil)}
+          </span>
+        </>
+      )
+    }
+  ];
+
+  const itensLucroVenda = [
+    {
+      id: 'valorVendaResidual',
+      label: 'Valor de Venda (Residual Físico)',
+      val: numToMask(valorVendaResidual),
+      temCalculo: true,
+      explicacao: (
+        <>
+          Valor residual de mercado estimado ao término do aluguel ({prazoSelecionado} meses):
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(dadosFinais.residualCaminhao ?? 0)} (Caminhão) + {numToMask(dadosFinais.residualImplemento ?? 0)} (Implemento) = {numToMask(valorVendaResidual)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'valorComissao',
+      label: `(-) Comissão de Venda (${(taxaComissao * 100).toFixed(1)}%)`,
+      val: `- ${numToMask(valorComissao)}`,
+      color: '#dc2626',
+      temCalculo: true,
+      explicacao: (
+        <>
+          Comissão paga pela intermediação da venda do ativo pós-locação:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(valorVendaResidual)} * {(taxaComissao * 100).toFixed(1)}% = {numToMask(valorComissao)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'valorLiquidoVenda',
+      label: 'Valor de Venda Líquido de Comissão',
+      val: numToMask(valorLíquidoVenda),
+      temCalculo: true,
+      explicacao: (
+        <>
+          Valor residual líquido que entra no fluxo de caixa após a corretagem:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(valorVendaResidual)} - {numToMask(valorComissao)} = {numToMask(valorLíquidoVenda)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'valorResidualContabilLucro',
+      label: '(-) Valor Residual Contábil',
+      val: `- ${numToMask(valorResidualContabil)}`,
+      color: '#dc2626',
+      temCalculo: true,
+      explicacao: (
+        <>
+          Custo de baixa fiscal do ativo (Valor de Compra menos Depreciação Acumulada):
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(valorCompraTotal)} - {numToMask(depContabilAcumulada)} = {numToMask(valorResidualContabil)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'lucroVenda',
+      label: lucroVenda >= 0 ? 'Lucro na Venda' : 'Prejuízo na Venda',
+      val: numToMask(lucroVenda),
+      color: lucroVenda >= 0 ? '#16a34a' : '#dc2626',
+      isBold: true,
+      temCalculo: true,
+      explicacao: (
+        <>
+          Ganho (ou perda) contábil de capital gerado na venda do ativo:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(valorLíquidoVenda)} (Venda Líq.) - {numToMask(valorResidualContabil)} (Resid. Contábil) = {numToMask(lucroVenda)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'baseCalculoImposto',
+      label: 'Base de Cálculo para Tributação',
+      val: numToMask(baseCalculoImposto),
+      isBold: true,
+      color: 'var(--color-grey-800)',
+      temCalculo: true,
+      explicacao: (
+        <>
+          Lucro contábil líquido tributável (se houver lucro):
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {lucroVenda >= 0 ? `${numToMask(lucroVenda)}` : `R$ 0,00 (Prejuízo fiscal isento de IR/CSLL)`}
+          </span>
+        </>
+      )
+    }
+  ];
+
+  const itensTributacao = [
+    {
+      id: 'valorIr',
+      label: `IR (${(taxaIr * 100).toFixed(1)}% s/ Lucro)`,
+      val: numToMask(valorIr),
+      color: valorIr > 0 ? '#dc2626' : undefined,
+      temCalculo: true,
+      explicacao: (
+        <>
+          Imposto de Renda sobre o ganho de capital obtido na venda:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(baseCalculoImposto)} (Base) * {(taxaIr * 100).toFixed(1)}% = {numToMask(valorIr)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'valorAdicionalIr',
+      label: `Adicional ao IR (${(taxaAdicionalIr * 100).toFixed(1)}% s/ Lucro)`,
+      val: numToMask(valorAdicionalIr),
+      color: valorAdicionalIr > 0 ? '#dc2626' : undefined,
+      temCalculo: true,
+      explicacao: (
+        <>
+          Adicional de Imposto de Renda sobre o ganho de capital:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(baseCalculoImposto)} (Base) * {(taxaAdicionalIr * 100).toFixed(1)}% = {numToMask(valorAdicionalIr)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'valorCsll',
+      label: `CSLL (${(taxaCsll * 100).toFixed(1)}% s/ Lucro)`,
+      val: numToMask(valorCsll),
+      color: valorCsll > 0 ? '#dc2626' : undefined,
+      temCalculo: true,
+      explicacao: (
+        <>
+          Contribuição Social sobre o Lucro Líquido do ganho de capital:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(baseCalculoImposto)} (Base) * {(taxaCsll * 100).toFixed(1)}% = {numToMask(valorCsll)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'totalTributos',
+      label: 'Total Tributos',
+      val: numToMask(totalTributos),
+      color: totalTributos > 0 ? '#dc2626' : undefined,
+      isBold: true,
+      temCalculo: true,
+      explicacao: (
+        <>
+          Soma de todos os impostos devidos na alienação do ativo:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(valorIr)} + {numToMask(valorAdicionalIr)} + {numToMask(valorCsll)} = {numToMask(totalTributos)}
+          </span>
+        </>
+      )
+    }
+  ];
+
+  const itensResultadoFinal = [
+    {
+      id: 'valorVendaBruto',
+      label: 'Valor de Venda Bruto',
+      val: numToMask(valorVendaResidual),
+      temCalculo: true,
+      explicacao: (
+        <>
+          Valor residual de mercado estimado ao término do contrato ({prazoSelecionado} meses):
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(dadosFinais.residualCaminhao ?? 0)} (Caminhão) + {numToMask(dadosFinais.residualImplemento ?? 0)} (Implemento) = {numToMask(valorVendaResidual)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'comissaoCorretagem',
+      label: '(-) Comissão de Corretagem',
+      val: `- ${numToMask(valorComissao)}`,
+      color: '#dc2626',
+      temCalculo: true,
+      explicacao: (
+        <>
+          Valor pago de comissão de venda (5.8%):
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(valorVendaResidual)} * {(taxaComissao * 100).toFixed(1)}% = {numToMask(valorComissao)}
+          </span>
+        </>
+      )
+    },
+    {
+      id: 'impostosTributos',
+      label: '(-) Impostos e Tributos',
+      val: `- ${numToMask(totalTributos)}`,
+      color: '#dc2626',
+      temCalculo: true,
+      explicacao: (
+        <>
+          Total de impostos federais sobre o lucro da alienação:
+          <br />
+          <span style={{ color: '#9a3412', fontWeight: 600 }}>
+            {numToMask(valorIr)} (IR) + {numToMask(valorAdicionalIr)} (Add. IR) + {numToMask(valorCsll)} (CSLL) = {numToMask(totalTributos)}
+          </span>
+        </>
+      )
+    }
+  ];
+
   return (
     <div className="modal-overlay" onClick={handleOverlayClick} role="dialog" aria-modal="true">
       <div className="modal" style={{ maxWidth: '880px', width: '95%', display: 'flex', flexDirection: 'column', maxHeight: '90vh', overflow: 'hidden' }}>
@@ -434,29 +806,21 @@ export function CalculoItemModal({
           {[
             { id: 'dados', label: 'Dados' },
             { id: 'cashflow', label: 'Cash Flow' },
-            { id: 'financiamento', label: 'Financiamento', disabled: true },
+            { id: 'financiamento', label: 'Financiamento' },
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => !tab.disabled && setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id as any)}
               style={{
                 padding: '14px 4px', border: 'none', background: 'none',
-                fontSize: '13px', fontWeight: 600, cursor: tab.disabled ? 'not-allowed' : 'pointer',
-                color: tab.disabled ? 'var(--color-grey-400)' : activeTab === tab.id ? 'var(--color-primary)' : 'var(--color-grey-600)',
+                fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                color: activeTab === tab.id ? 'var(--color-primary)' : 'var(--color-grey-600)',
                 borderBottom: activeTab === tab.id ? '2px solid var(--color-primary)' : '2px solid transparent',
                 display: 'flex', alignItems: 'center', gap: '6px',
                 transition: 'all 0.15s'
               }}
             >
               {tab.label}
-              {tab.disabled && (
-                <span style={{
-                  fontSize: '9px', fontWeight: 500, padding: '2px 6px',
-                  borderRadius: '10px', backgroundColor: '#e2e8f0', color: 'var(--color-grey-500)'
-                }}>
-                  Em breve
-                </span>
-              )}
             </button>
           ))}
         </div>
@@ -751,16 +1115,85 @@ export function CalculoItemModal({
                   </div>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {[
-                      { label: 'Valor de Compra Total', val: numToMask(valorCompraTotal) },
-                      { label: `Taxa Deprec. Contábil (% a.a.)`, val: `${(taxaDepContabil * 100).toFixed(2)}%` },
-                      { label: 'Período do Contrato', val: `${mesesContrato} meses (${anosContrato.toFixed(1)} anos)` },
-                      { label: 'Depreciação Contábil Acumulada', val: numToMask(depContabilAcumulada), color: '#dc2626' },
-                      { label: 'Valor Residual Contábil', val: numToMask(valorResidualContabil), color: 'var(--color-primary)', isBold: true },
-                    ].map((row, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: idx < 4 ? '1px dashed #f1f5f9' : 'none', paddingBottom: '6px' }}>
-                        <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
-                        <span style={{ fontWeight: row.isBold ? 700 : 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                    {itensDepreciacaoContabil.map((row, idx) => (
+                      <div key={row.id} style={{ position: 'relative', borderBottom: idx < itensDepreciacaoContabil.length - 1 ? '1px dashed #f1f5f9' : 'none', paddingBottom: '8px', paddingTop: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
+                            {row.temCalculo && (
+                              <button
+                                type="button"
+                                onClick={() => setExplicacaoAtiva(explicacaoAtiva === row.id ? null : row.id)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  border: 'none',
+                                  background: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  color: explicacaoAtiva === row.id ? 'var(--color-primary)' : 'var(--color-grey-450)',
+                                  transition: 'color 0.15s'
+                                }}
+                                title="Ver fórmula de cálculo"
+                              >
+                                <Info size={14} />
+                              </button>
+                            )}
+                          </div>
+                          <span style={{ fontWeight: row.isBold ? 700 : 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                        </div>
+                        {row.temCalculo && explicacaoAtiva === row.id && (
+                          <div
+                            ref={popoverRef}
+                            style={{
+                              position: 'absolute',
+                              top: '26px',
+                              left: '12px',
+                              width: '280px',
+                              backgroundColor: '#fffbeb',
+                              border: '1px solid #fef3c7',
+                              borderRadius: '8px',
+                              padding: '12px 14px',
+                              fontSize: '11px',
+                              color: '#b45309',
+                              lineHeight: '1.5',
+                              boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
+                              zIndex: 50,
+                              animation: 'fadeIn 0.15s ease-in-out',
+                            }}
+                          >
+                            {/* Botão de Fechar (X) */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExplicacaoAtiva(null);
+                              }}
+                              style={{
+                                position: 'absolute',
+                                top: '6px',
+                                right: '6px',
+                                border: 'none',
+                                background: 'none',
+                                cursor: 'pointer',
+                                color: '#b45309',
+                                padding: '2px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                opacity: 0.7,
+                              }}
+                              title="Fechar"
+                            >
+                              <X size={12} weight="bold" />
+                            </button>
+                            <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span>🧮</span> Memória de Cálculo:
+                            </div>
+                            {row.explicacao}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -781,22 +1214,85 @@ export function CalculoItemModal({
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {[
-                      { label: 'Valor de Venda (Residual Físico)', val: numToMask(valorVendaResidual) },
-                      { label: `(-) Comissão de Venda (${(taxaComissao * 100).toFixed(1)}%)`, val: `- ${numToMask(valorComissao)}`, color: '#dc2626' },
-                      { label: 'Valor de Venda Líquido de Comissão', val: numToMask(valorLíquidoVenda) },
-                      { label: '(-) Valor Residual Contábil', val: `- ${numToMask(valorResidualContabil)}`, color: '#dc2626' },
-                      { 
-                        label: lucroVenda >= 0 ? 'Lucro na Venda' : 'Prejuízo na Venda', 
-                        val: numToMask(lucroVenda), 
-                        color: lucroVenda >= 0 ? '#16a34a' : '#dc2626',
-                        isBold: true 
-                      },
-                      { label: 'Base de Cálculo para Tributação', val: numToMask(baseCalculoImposto), isBold: true, color: 'var(--color-grey-800)' },
-                    ].map((row, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: idx < 5 ? '1px dashed #f1f5f9' : 'none', paddingBottom: '6px' }}>
-                        <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
-                        <span style={{ fontWeight: row.isBold ? 700 : 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                    {itensLucroVenda.map((row, idx) => (
+                      <div key={row.id} style={{ position: 'relative', borderBottom: idx < itensLucroVenda.length - 1 ? '1px dashed #f1f5f9' : 'none', paddingBottom: '8px', paddingTop: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
+                            {row.temCalculo && (
+                              <button
+                                type="button"
+                                onClick={() => setExplicacaoAtiva(explicacaoAtiva === row.id ? null : row.id)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  border: 'none',
+                                  background: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  color: explicacaoAtiva === row.id ? 'var(--color-primary)' : 'var(--color-grey-450)',
+                                  transition: 'color 0.15s'
+                                }}
+                                title="Ver fórmula de cálculo"
+                              >
+                                <Info size={14} />
+                              </button>
+                            )}
+                          </div>
+                          <span style={{ fontWeight: row.isBold ? 700 : 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                        </div>
+                        {row.temCalculo && explicacaoAtiva === row.id && (
+                          <div
+                            ref={popoverRef}
+                            style={{
+                              position: 'absolute',
+                              top: '26px',
+                              left: '12px',
+                              width: '280px',
+                              backgroundColor: '#fffbeb',
+                              border: '1px solid #fef3c7',
+                              borderRadius: '8px',
+                              padding: '12px 14px',
+                              fontSize: '11px',
+                              color: '#b45309',
+                              lineHeight: '1.5',
+                              boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
+                              zIndex: 50,
+                              animation: 'fadeIn 0.15s ease-in-out',
+                            }}
+                          >
+                            {/* Botão de Fechar (X) */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExplicacaoAtiva(null);
+                              }}
+                              style={{
+                                position: 'absolute',
+                                top: '6px',
+                                right: '6px',
+                                border: 'none',
+                                background: 'none',
+                                cursor: 'pointer',
+                                color: '#b45309',
+                                padding: '2px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                opacity: 0.7,
+                              }}
+                              title="Fechar"
+                            >
+                              <X size={12} weight="bold" />
+                            </button>
+                            <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span>🧮</span> Memória de Cálculo:
+                            </div>
+                            {row.explicacao}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -822,15 +1318,85 @@ export function CalculoItemModal({
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {[
-                      { label: `IR (${(taxaIr * 100).toFixed(1)}% s/ Lucro)`, val: numToMask(valorIr), color: valorIr > 0 ? '#dc2626' : undefined },
-                      { label: `Adicional ao IR (${(taxaAdicionalIr * 100).toFixed(1)}% s/ Lucro)`, val: numToMask(valorAdicionalIr), color: valorAdicionalIr > 0 ? '#dc2626' : undefined },
-                      { label: `CSLL (${(taxaCsll * 100).toFixed(1)}% s/ Lucro)`, val: numToMask(valorCsll), color: valorCsll > 0 ? '#dc2626' : undefined },
-                      { label: 'Total Tributos', val: numToMask(totalTributos), color: totalTributos > 0 ? '#dc2626' : undefined, isBold: true },
-                    ].map((row, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: idx < 3 ? '1px dashed #f1f5f9' : 'none', paddingBottom: '6px' }}>
-                        <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
-                        <span style={{ fontWeight: row.isBold ? 700 : 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                    {itensTributacao.map((row, idx) => (
+                      <div key={row.id} style={{ position: 'relative', borderBottom: idx < itensTributacao.length - 1 ? '1px dashed #f1f5f9' : 'none', paddingBottom: '8px', paddingTop: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
+                            {row.temCalculo && (
+                              <button
+                                type="button"
+                                onClick={() => setExplicacaoAtiva(explicacaoAtiva === row.id ? null : row.id)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  border: 'none',
+                                  background: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  color: explicacaoAtiva === row.id ? 'var(--color-primary)' : 'var(--color-grey-450)',
+                                  transition: 'color 0.15s'
+                                }}
+                                title="Ver fórmula de cálculo"
+                              >
+                                <Info size={14} />
+                              </button>
+                            )}
+                          </div>
+                          <span style={{ fontWeight: row.isBold ? 700 : 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                        </div>
+                        {row.temCalculo && explicacaoAtiva === row.id && (
+                          <div
+                            ref={popoverRef}
+                            style={{
+                              position: 'absolute',
+                              top: '26px',
+                              left: '12px',
+                              width: '280px',
+                              backgroundColor: '#fffbeb',
+                              border: '1px solid #fef3c7',
+                              borderRadius: '8px',
+                              padding: '12px 14px',
+                              fontSize: '11px',
+                              color: '#b45309',
+                              lineHeight: '1.5',
+                              boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
+                              zIndex: 50,
+                              animation: 'fadeIn 0.15s ease-in-out',
+                            }}
+                          >
+                            {/* Botão de Fechar (X) */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExplicacaoAtiva(null);
+                              }}
+                              style={{
+                                position: 'absolute',
+                                top: '6px',
+                                right: '6px',
+                                border: 'none',
+                                background: 'none',
+                                cursor: 'pointer',
+                                color: '#b45309',
+                                padding: '2px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                opacity: 0.7,
+                              }}
+                              title="Fechar"
+                            >
+                              <X size={12} weight="bold" />
+                            </button>
+                            <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span>🧮</span> Memória de Cálculo:
+                            </div>
+                            {row.explicacao}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -853,16 +1419,387 @@ export function CalculoItemModal({
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '14px' }}>
-                      {[
-                        { label: 'Valor de Venda Bruto', val: numToMask(valorVendaResidual) },
-                        { label: '(-) Comissão de Corretagem', val: `- ${numToMask(valorComissao)}`, color: '#dc2626' },
-                        { label: '(-) Impostos e Tributos', val: `- ${numToMask(totalTributos)}`, color: '#dc2626' },
-                      ].map((row, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: '1px dashed rgba(249,115,22,0.1)', paddingBottom: '6px' }}>
-                          <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
-                          <span style={{ fontWeight: 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                      {itensResultadoFinal.map((row, idx) => (
+                        <div key={row.id} style={{ position: 'relative', borderBottom: '1px dashed rgba(249,115,22,0.1)', paddingBottom: '8px', paddingTop: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ color: 'var(--color-grey-600)' }}>{row.label}</span>
+                              {row.temCalculo && (
+                                <button
+                                  type="button"
+                                  onClick={() => setExplicacaoAtiva(explicacaoAtiva === row.id ? null : row.id)}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    border: 'none',
+                                    background: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    color: explicacaoAtiva === row.id ? 'var(--color-primary)' : 'var(--color-grey-450)',
+                                    transition: 'color 0.15s'
+                                  }}
+                                  title="Ver fórmula de cálculo"
+                                >
+                                  <Info size={14} />
+                                </button>
+                              )}
+                            </div>
+                            <span style={{ fontWeight: 500, color: row.color || 'var(--color-grey-800)' }}>{row.val}</span>
+                          </div>
+                          {row.temCalculo && explicacaoAtiva === row.id && (
+                            <div
+                              ref={popoverRef}
+                              style={{
+                                position: 'absolute',
+                                top: '26px',
+                                left: '12px',
+                                width: '280px',
+                                backgroundColor: '#fffbeb',
+                                border: '1px solid #fef3c7',
+                                borderRadius: '8px',
+                                padding: '12px 14px',
+                                fontSize: '11px',
+                                color: '#b45309',
+                                lineHeight: '1.5',
+                                boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
+                                zIndex: 50,
+                                animation: 'fadeIn 0.15s ease-in-out',
+                              }}
+                            >
+                              {/* Botão de Fechar (X) */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExplicacaoAtiva(null);
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  top: '6px',
+                                  right: '6px',
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  color: '#b45309',
+                                  padding: '2px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  opacity: 0.7,
+                                }}
+                                title="Fechar"
+                              >
+                                <X size={12} weight="bold" />
+                              </button>
+                              <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span>🧮</span> Memória de Cálculo:
+                              </div>
+                              {row.explicacao}
+                            </div>
+                          )}
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  <div style={{
+                    position: 'relative',
+                    marginTop: '10px', padding: '12px', borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-primary)' }}>VALOR LÍQUIDO FINAL DE VENDA</span>
+                        <button
+                          type="button"
+                          onClick={() => setExplicacaoAtiva(explicacaoAtiva === 'valorLiquidoFinalVenda' ? null : 'valorLiquidoFinalVenda')}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: 'none',
+                            background: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            color: explicacaoAtiva === 'valorLiquidoFinalVenda' ? 'var(--color-primary)' : 'rgba(249,115,22,0.6)',
+                            transition: 'color 0.15s'
+                          }}
+                          title="Ver fórmula de cálculo"
+                        >
+                          <Info size={13} />
+                        </button>
+                      </div>
+                      <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--color-primary)' }}>
+                        {numToMask(valorLiquidoFinalVenda)}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--color-grey-500)', fontWeight: 500 }}>Variação vs. Compra</span>
+                        <button
+                          type="button"
+                          onClick={() => setExplicacaoAtiva(explicacaoAtiva === 'variacaoPercentual' ? null : 'variacaoPercentual')}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: 'none',
+                            background: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            color: explicacaoAtiva === 'variacaoPercentual' ? 'var(--color-primary)' : 'var(--color-grey-450)',
+                            transition: 'color 0.15s'
+                          }}
+                          title="Ver fórmula de cálculo"
+                        >
+                          <Info size={12} />
+                        </button>
+                      </div>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: variacaoPercentual >= 0 ? '#16a34a' : '#dc2626' }}>
+                        {variacaoPercentual >= 0 ? '+' : ''}{variacaoPercentual.toFixed(2)}%
+                      </span>
+                    </div>
+
+                    {explicacaoAtiva === 'valorLiquidoFinalVenda' && (
+                      <div
+                        ref={popoverRef}
+                        style={{
+                          position: 'absolute',
+                          bottom: '50px',
+                          left: '12px',
+                          width: '280px',
+                          backgroundColor: '#fffbeb',
+                          border: '1px solid #fef3c7',
+                          borderRadius: '8px',
+                          padding: '12px 14px',
+                          fontSize: '11px',
+                          color: '#b45309',
+                          lineHeight: '1.5',
+                          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
+                          zIndex: 50,
+                          animation: 'fadeIn 0.15s ease-in-out',
+                          textAlign: 'left'
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExplicacaoAtiva(null);
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: '6px',
+                            right: '6px',
+                            border: 'none',
+                            background: 'none',
+                            cursor: 'pointer',
+                            color: '#b45309',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: 0.7,
+                          }}
+                          title="Fechar"
+                        >
+                          <X size={12} weight="bold" />
+                        </button>
+                        <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>🧮</span> Memória de Cálculo:
+                        </div>
+                        Retorno de caixa líquido da alienação deduzidos todos os custos e impostos:
+                        <br />
+                        <span style={{ color: '#9a3412', fontWeight: 600 }}>
+                          {numToMask(valorVendaResidual)} (Venda Bruta) - {numToMask(valorComissao)} (Corretagem) - {numToMask(totalTributos)} (Impostos) = {numToMask(valorLiquidoFinalVenda)}
+                        </span>
+                      </div>
+                    )}
+
+                    {explicacaoAtiva === 'variacaoPercentual' && (
+                      <div
+                        ref={popoverRef}
+                        style={{
+                          position: 'absolute',
+                          bottom: '50px',
+                          right: '12px',
+                          width: '280px',
+                          backgroundColor: '#fffbeb',
+                          border: '1px solid #fef3c7',
+                          borderRadius: '8px',
+                          padding: '12px 14px',
+                          fontSize: '11px',
+                          color: '#b45309',
+                          lineHeight: '1.5',
+                          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
+                          zIndex: 50,
+                          animation: 'fadeIn 0.15s ease-in-out',
+                          textAlign: 'left'
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExplicacaoAtiva(null);
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: '6px',
+                            right: '6px',
+                            border: 'none',
+                            background: 'none',
+                            cursor: 'pointer',
+                            color: '#b45309',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: 0.7,
+                          }}
+                          title="Fechar"
+                        >
+                          <X size={12} weight="bold" />
+                        </button>
+                        <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>🧮</span> Memória de Cálculo:
+                        </div>
+                        Relação entre o valor de venda líquido final e o valor de compra original do ativo:
+                        <br />
+                        <span style={{ color: '#9a3412', fontWeight: 600 }}>
+                          (({numToMask(valorLiquidoFinalVenda)} / {numToMask(valorCompraTotal)}) - 1) * 100 = {variacaoPercentual.toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'financiamento' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* Filtro de Prazos (Flag de Visualização) */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0',
+                borderRadius: 'var(--radius-md)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Calendar size={18} color="var(--color-primary)" />
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-grey-800)' }}>
+                    Prazo de locação para a simulação:
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {prazosCotaque.map(pr => (
+                    <button
+                      key={pr}
+                      type="button"
+                      onClick={() => setPrazoSelecionado(pr)}
+                      style={{
+                        padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                        cursor: 'pointer', border: '1px solid',
+                        borderColor: prazoSelecionado === pr ? 'var(--color-primary)' : '#e2e8f0',
+                        backgroundColor: prazoSelecionado === pr ? 'rgba(249,115,22,0.08)' : '#fff',
+                        color: prazoSelecionado === pr ? 'var(--color-primary)' : 'var(--color-grey-600)',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {pr} meses
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Grid de Resumos e Inputs */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                
+                {/* Inputs de Simulação de Financiamento */}
+                <div style={{
+                  padding: '20px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)',
+                  backgroundColor: '#fff', display: 'flex', flexDirection: 'column', gap: '14px'
+                }}>
+                  <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-800)' }}>
+                      📝 Parâmetros do Financiamento
+                    </h4>
+                    <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--color-grey-450)' }}>
+                      Ajuste as taxas para simulação de financiamento.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--color-grey-500)', marginBottom: '6px' }}>
+                        Valor Total Financiado (R$)
+                      </label>
+                      <input
+                        type="text"
+                        value={numToMask(valorCompraTotal)}
+                        disabled
+                        style={{
+                          width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0',
+                          borderRadius: '6px', fontSize: '13px', backgroundColor: '#f8fafc',
+                          color: 'var(--color-grey-600)'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--color-grey-500)', marginBottom: '6px' }}>
+                        Taxa de Juros Mensal (% a.m.)
+                      </label>
+                      <input
+                        type="text"
+                        value={jurosSimulado ? `${(jurosSimulado * 100).toFixed(4)}%` : '0,0000%'}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value.replace(/[^0-9.]/g, '')) || 0;
+                          setJurosSimulado(val / 100);
+                        }}
+                        style={{
+                          width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0',
+                          borderRadius: '6px', fontSize: '13px', color: 'var(--color-grey-800)'
+                        }}
+                        placeholder="Ex: 1.01%"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Resumo do Crédito */}
+                <div style={{
+                  padding: '20px', border: '1px solid rgba(249,115,22,0.15)', borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'rgba(249,115,22,0.01)', display: 'flex', flexDirection: 'column', gap: '14px',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <div style={{ borderBottom: '1px solid rgba(249,115,22,0.1)', paddingBottom: '10px' }}>
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-800)' }}>
+                        📊 Resumo Financeiro
+                      </h4>
+                      <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--color-grey-450)' }}>
+                        Demonstrativo de juros e custos totais.
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: '1px dashed #f1f5f9', paddingBottom: '6px' }}>
+                        <span style={{ color: 'var(--color-grey-600)' }}>Valor Original (Compra)</span>
+                        <span style={{ fontWeight: 500, color: 'var(--color-grey-800)' }}>{numToMask(valorCompraTotal)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: '1px dashed #f1f5f9', paddingBottom: '6px' }}>
+                        <span style={{ color: 'var(--color-grey-600)' }}>Total Pago (Com Juros)</span>
+                        <span style={{ fontWeight: 500, color: 'var(--color-grey-800)' }}>{numToMask(parcelaMensal * prazoSelecionado)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: '1px dashed #f1f5f9', paddingBottom: '6px' }}>
+                        <span style={{ color: 'var(--color-grey-600)' }}>Custo Total de Juros</span>
+                        <span style={{ fontWeight: 500, color: '#dc2626' }}>{numToMask((parcelaMensal * prazoSelecionado) - valorCompraTotal)}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -872,21 +1809,74 @@ export function CalculoItemModal({
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                   }}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-primary)' }}>VALOR LÍQUIDO FINAL DE VENDA</span>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-primary)' }}>VALOR DA PARCELA MENSAL</span>
                       <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--color-primary)' }}>
-                        {numToMask(valorLiquidoFinalVenda)}
+                        {numToMask(parcelaMensal)}
                       </span>
                     </div>
-                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontSize: '10px', color: 'var(--color-grey-500)', fontWeight: 500 }}>Variação vs. Compra</span>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: variacaoPercentual >= 0 ? '#16a34a' : '#dc2626' }}>
-                        {variacaoPercentual >= 0 ? '+' : ''}{variacaoPercentual.toFixed(2)}%
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                      <span style={{ fontSize: '10px', color: 'var(--color-grey-500)', fontWeight: 500 }}>Acréscimo vs. Compra</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#dc2626' }}>
+                        +{(((parcelaMensal * prazoSelecionado) / valorCompraTotal - 1) * 100).toFixed(2)}%
                       </span>
                     </div>
                   </div>
                 </div>
 
               </div>
+
+              {/* Linha do Tempo / Tabela Mês a Mês da Amortização */}
+              <div style={{
+                padding: '20px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)',
+                backgroundColor: '#fff', display: 'flex', flexDirection: 'column', gap: '14px'
+              }}>
+                <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-800)' }}>
+                    ⏳ Evolução do Financiamento (Tabela PRICE)
+                  </h4>
+                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--color-grey-450)' }}>
+                    Projeção mês a mês de pagamentos acumulados e percentual amortizado do valor original.
+                  </p>
+                </div>
+
+                <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #f1f5f9', borderRadius: '6px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f8fafc', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
+                        <th style={{ padding: '10px 14px', color: 'var(--color-grey-600)' }}>Período</th>
+                        <th style={{ padding: '10px 14px', color: 'var(--color-grey-600)' }}>Parcela Mensal</th>
+                        <th style={{ padding: '10px 14px', color: 'var(--color-grey-600)' }}>Total Pago Acumulado</th>
+                        <th style={{ padding: '10px 14px', color: 'var(--color-grey-600)' }}>Progresso do Financiamento</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: prazoSelecionado }).map((_, idx) => {
+                        const mes = idx + 1;
+                        const acumulado = parcelaMensal * mes;
+                        const percentualPago = (mes / prazoSelecionado) * 100;
+                        return (
+                          <tr key={mes} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: mes % 2 === 0 ? '#fafafa' : '#fff' }}>
+                            <td style={{ padding: '8px 14px', fontWeight: 600, color: 'var(--color-grey-750)' }}>Mês {mes} de {prazoSelecionado}</td>
+                            <td style={{ padding: '8px 14px', color: 'var(--color-grey-800)' }}>{numToMask(parcelaMensal)}</td>
+                            <td style={{ padding: '8px 14px', color: 'var(--color-grey-800)', fontWeight: 500 }}>{numToMask(acumulado)}</td>
+                            <td style={{ padding: '8px 14px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{ flex: 1, height: '6px', backgroundColor: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
+                                  <div style={{ width: `${percentualPago}%`, height: '100%', backgroundColor: 'var(--color-primary)' }} />
+                                </div>
+                                <span style={{ fontWeight: 600, color: 'var(--color-grey-600)', minWidth: '40px', textAlign: 'right' }}>
+                                  {percentualPago.toFixed(1)}%
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
           )}
         </div>

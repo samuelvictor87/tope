@@ -25,6 +25,8 @@ export function DespesasOperacionais({
   const [ipvaDesconto, setIpvaDesconto] = useState<number | string>('');
   const [ipvaDepreciacao, setIpvaDepreciacao] = useState<number | string>('');
   const [reajusteAluguel, setReajusteAluguel] = useState<number | string>('');
+  const [mesesAntes, setMesesAntes] = useState<number | string>('');
+  const [mesesDepois, setMesesDepois] = useState<number | string>('');
   const [salvando, setSalvando] = useState(false);
 
   // Sincronizar campos com dados carregados
@@ -34,6 +36,8 @@ export function DespesasOperacionais({
       setIpvaDesconto(configuracao.ipva_desconto_vista_percentual * 100);
       setIpvaDepreciacao(configuracao.ipva_depreciacao_percentual * 100);
       setReajusteAluguel(configuracao.reajuste_aluguel_anual_percentual * 100);
+      setMesesAntes(configuracao.meses_antes_aluguel ?? 1);
+      setMesesDepois(configuracao.meses_depois_aluguel ?? 3);
     }
   }, [configuracao]);
 
@@ -44,6 +48,8 @@ export function DespesasOperacionais({
     const ipvaDescontoVal = Number(ipvaDesconto);
     const ipvaDepreciacaoVal = Number(ipvaDepreciacao);
     const reajusteAluguelVal = Number(reajusteAluguel);
+    const mesesAntesVal = Number(mesesAntes);
+    const mesesDepoisVal = Number(mesesDepois);
 
     if (isNaN(documentacaoVal) || documentacaoVal < 0) {
       toast.error('Erro', 'Valor de documentação deve ser válido.');
@@ -61,6 +67,14 @@ export function DespesasOperacionais({
       toast.error('Erro', 'Índice de reajuste anual deve ser um valor válido.');
       return;
     }
+    if (isNaN(mesesAntesVal) || mesesAntesVal < 0) {
+      toast.error('Erro', 'Meses antes do aluguel deve ser um valor válido.');
+      return;
+    }
+    if (isNaN(mesesDepoisVal) || mesesDepoisVal < 0) {
+      toast.error('Erro', 'Meses depois do aluguel deve ser um valor válido.');
+      return;
+    }
 
     setSalvando(true);
     const { error } = await atualizarConfiguracoesLocacao(configuracao.id, {
@@ -68,6 +82,8 @@ export function DespesasOperacionais({
       ipva_desconto_vista_percentual: ipvaDescontoVal / 100,
       ipva_depreciacao_percentual: ipvaDepreciacaoVal / 100,
       reajuste_aluguel_anual_percentual: reajusteAluguelVal / 100,
+      meses_antes_aluguel: mesesAntesVal,
+      meses_depois_aluguel: mesesDepoisVal,
     });
     setSalvando(false);
 
@@ -123,6 +139,47 @@ export function DespesasOperacionais({
           min={0}
           required
         />
+      </div>
+
+      {/* Seção de Ciclo de Vida do Ativo (Prazos Adicionais) */}
+      <div style={{
+        borderTop: '1px solid var(--color-grey-100)',
+        paddingTop: 'var(--spacing-20)',
+        marginTop: 'var(--spacing-20)'
+      }}>
+        <h3 style={{
+          fontSize: 'var(--font-size-sm)',
+          fontWeight: 600,
+          color: 'var(--color-grey-800)',
+          marginBottom: '4px'
+        }}>
+          Ciclo de Vida do Ativo (Prazos Adicionais)
+        </h3>
+        <p style={{
+          fontSize: 'var(--font-size-xs)',
+          color: 'var(--color-grey-500)',
+          marginBottom: 'var(--spacing-16)'
+        }}>
+          Prazos em meses para preparação (antes da locação) e desmobilização/venda (após a locação).
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', maxWidth: '460px' }}>
+          <InputNumber
+            label="Meses antes (Preparação)"
+            value={mesesAntes}
+            onChange={(v) => setMesesAntes(v)}
+            step={1}
+            min={0}
+            required
+          />
+          <InputNumber
+            label="Meses depois (Venda)"
+            value={mesesDepois}
+            onChange={(v) => setMesesDepois(v)}
+            step={1}
+            min={0}
+            required
+          />
+        </div>
       </div>
 
       <div className="config-locacao-footer-actions">
