@@ -38,6 +38,7 @@ interface TaxasCotacao {
   ipva_desconto_vista_percentual?: number | null;
   ipva_depreciacao_percentual?: number | null;
   reajuste_aluguel_anual_percentual?: number | null;
+  tma_anual_percentual?: number | null;
   meses_antes_aluguel?: number | null;
   meses_depois_aluguel?: number | null;
 }
@@ -380,59 +381,190 @@ export function CalculoItemModal({
       // 2. Abrir o xlsx como ZIP (xlsx = ZIP de XMLs)
       const zip = await JSZip.loadAsync(arrayBuffer);
 
-      // 3. Localizar qual arquivo XML corresponde à aba "Dados"
-      const workbookXmlStr = await zip.file('xl/workbook.xml')?.async('string');
-      if (!workbookXmlStr) throw new Error('Arquivo xlsx inválido.');
-
-      const wbDoc = new DOMParser().parseFromString(workbookXmlStr, 'application/xml');
-      const sheets = wbDoc.getElementsByTagName('sheet');
-      let rId = '';
-      for (let i = 0; i < sheets.length; i++) {
-        if (sheets[i].getAttribute('name') === 'Dados') {
-          rId = sheets[i].getAttribute('r:id') ||
-                sheets[i].getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') || '';
-          break;
-        }
-      }
-      if (!rId) throw new Error('Aba "Dados" não encontrada no workbook.');
-
-      // 4. Resolver o rId para o caminho do arquivo da aba
-      const relsXmlStr = await zip.file('xl/_rels/workbook.xml.rels')?.async('string');
-      if (!relsXmlStr) throw new Error('Relacionamentos do workbook não encontrados.');
-
-      const relsDoc = new DOMParser().parseFromString(relsXmlStr, 'application/xml');
-      const rels = relsDoc.getElementsByTagName('Relationship');
-      let sheetPath = '';
-      for (let i = 0; i < rels.length; i++) {
-        if (rels[i].getAttribute('Id') === rId) {
-          sheetPath = 'xl/' + rels[i].getAttribute('Target');
-          break;
-        }
-      }
-      if (!sheetPath) throw new Error('Caminho da aba "Dados" não encontrado.');
-
-      // 5. Ler o XML da aba e modificar APENAS a célula C36
-      let sheetXml = await zip.file(sheetPath)?.async('string');
-      if (!sheetXml) throw new Error('Conteúdo da aba "Dados" não encontrado.');
-
-      // 5. Substituir apenas C29 (valor caminhão) e C30 (valor implemento)
-      // Essas células são valores puros, sem fórmulas — substituição direta e segura
+      // 3. Função auxiliar: substituir valor de uma célula no XML (robusta para self-closing)
       const substituirValorCelula = (xml: string, celRef: string, novoValor: number): string => {
-        // Regex para encontrar a célula pelo atributo r="CELREF"
-        const regex = new RegExp(`(<c\\s+r="${celRef}"[^>]*>)([\\s\\S]*?)(</c>)`);
-        const match = xml.match(regex);
-        if (!match) return xml;
-        // Substituir o conteúdo interno mantendo a tag de abertura e fechamento
-        return xml.replace(regex, `${match[1]}<v>${novoValor}</v>${match[3]}`);
+        // 1. Tentar encontrar a tag normal <c r="REF" ...>...</c> (não self-closing)
+        const normalRegex = new RegExp(`(<c\\s[^>]*?r="${celRef}"[^>]*(?<!/)>)([\\s\\S]*?)(</c>)`);
+        const normalMatch = xml.match(normalRegex);
+        
+        if (normalMatch) {
+          const inner = normalMatch[2];
+          let newInner = '';
+          if (inner.includes('<v>')) {
+            newInner = inner.replace(/<v>[^<]*<\/v>/, `<v>${novoValor}</v>`);
+          } else {
+            newInner = inner + `<v>${novoValor}</v>`;
+          }
+          return xml.replace(normalRegex, `${normalMatch[1]}${newInner}${normalMatch[3]}`);
+        }
+
+        // 2. Tentar encontrar a tag self-closing <c r="REF" .../>
+        const selfClosingRegex = new RegExp(`(<c\\s[^>]*?r="${celRef}"[^>]*?)/>`);
+        const selfMatch = xml.match(selfClosingRegex);
+        if (selfMatch) {
+          return xml.replace(selfClosingRegex, `${selfMatch[1]}><v>${novoValor}</v></c>`);
+        }
+
+        return xml;
       };
 
-      sheetXml = substituirValorCelula(sheetXml, 'C29', parseCurrency(caminhaoValor));
-      sheetXml = substituirValorCelula(sheetXml, 'C30', parseCurrency(implementoValor));
+      // 4. Função auxiliar: localizar e read o XML de qualquer aba pelo nome
+      const resolverAbaNoZip = async (nomeAba: string): Promise<{ xml: string; path: string } | null> => {
+        const workbookXmlStr = await zip.file('xl/workbook.xml')?.async('string');
+        if (!workbookXmlStr) return null;
 
-      // 6. Salvar o XML modificado de volta no ZIP
-      zip.file(sheetPath, sheetXml);
+        const wbDoc = new DOMParser().parseFromString(workbookXmlStr, 'application/xml');
+        const sheets = wbDoc.getElementsByTagName('sheet');
+        let rId = '';
+        for (let i = 0; i < sheets.length; i++) {
+          if (sheets[i].getAttribute('name') === nomeAba) {
+            rId = sheets[i].getAttribute('r:id') ||
+                  sheets[i].getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') || '';
+            break;
+          }
+        }
+        if (!rId) return null;
 
-      // 7. Gerar o buffer com compressão DEFLATE (mesmo que o original) e disparar o download
+        const relsXmlStr = await zip.file('xl/_rels/workbook.xml.rels')?.async('string');
+        if (!relsXmlStr) return null;
+
+        const relsDoc = new DOMParser().parseFromString(relsXmlStr, 'application/xml');
+        const rels = relsDoc.getElementsByTagName('Relationship');
+        let sheetPath = '';
+        for (let i = 0; i < rels.length; i++) {
+          if (rels[i].getAttribute('Id') === rId) {
+            sheetPath = 'xl/' + rels[i].getAttribute('Target');
+            break;
+          }
+        }
+        if (!sheetPath) return null;
+
+        const sheetXml = await zip.file(sheetPath)?.async('string');
+        return sheetXml ? { xml: sheetXml, path: sheetPath } : null;
+      };
+
+      // ── 5. Aba "Dados" — 6 células ──
+      const abaDados = await resolverAbaNoZip('Dados');
+      if (!abaDados) throw new Error('Aba "Dados" não encontrada no workbook.');
+
+      let dadosXml = abaDados.xml;
+      dadosXml = substituirValorCelula(dadosXml, 'C22', taxasCotacao?.reajuste_aluguel_anual_percentual ?? 0);
+      dadosXml = substituirValorCelula(dadosXml, 'C29', parseCurrency(caminhaoValor));
+      dadosXml = substituirValorCelula(dadosXml, 'C30', parseCurrency(implementoValor));
+      dadosXml = substituirValorCelula(dadosXml, 'C36', valorLíquidoVenda);
+      dadosXml = substituirValorCelula(dadosXml, 'F29', taxaComissao);
+      dadosXml = substituirValorCelula(dadosXml, 'C38', taxaDepContabil);
+      zip.file(abaDados.path, dadosXml);
+
+      // ── 6. Aba "Cashflow" — TMA Anual + Goal Seek (Preço Mensal) ──
+      const abaCashflow = await resolverAbaNoZip('Cashflow');
+      if (abaCashflow) {
+        let cashflowXml = abaCashflow.xml;
+
+        // Escrever TMA Anual
+        const tmaAnualVal = taxasCotacao?.tma_anual_percentual ?? 0.30;
+        cashflowXml = substituirValorCelula(cashflowXml, 'H68', tmaAnualVal);
+
+        // ── Goal Seek: Calcular Preço Mensal que faz VPL ≈ 0 ──
+        // Helper: ler valor numérico cacheado de uma célula no XML
+        const lerCelulaXml = (ref: string): number => {
+          // Buscar célula: <c r="REF" ...>CONTEUDO</c>
+          // Usa lookbehind (?<!/) para rejeitar self-closing <c .../>
+          const cellRegex = new RegExp(
+            `<c\\s+r="${ref}"[^>]*(?<!/)>([\\s\\S]*?)</c>`
+          );
+          const cellMatch = cashflowXml.match(cellRegex);
+          if (!cellMatch) return 0;
+          const vMatch = cellMatch[1].match(/<v>([^<]*)<\/v>/);
+          return vMatch ? parseFloat(vMatch[1]) : 0;
+        };
+
+        // Colunas H(idx=7) a AV(idx=47) = 41 meses, conforme range do NPV na planilha
+        const cols: string[] = [];
+        for (let i = 7; i <= 47; i++) {
+          if (i < 26) cols.push(String.fromCharCode(65 + i));
+          else cols.push('A' + String.fromCharCode(65 + i - 26));
+        }
+
+        // Ler valores cacheados do template para cada mês
+        const flowsCache = cols.map(c => lerCelulaXml(`${c}63`));  // fluxo líquido
+        const rentasCache = cols.map(c => lerCelulaXml(`${c}28`)); // aluguel mensal
+        const financCache = cols.map(c => lerCelulaXml(`${c}11`)); // financiamento mensal
+        const precoCache = lerCelulaXml('H66') || 1;               // preço do template
+
+        // Encontrar último mês com dados (detectar range real)
+        let ultimoMes = 0;
+        for (let t = cols.length - 1; t >= 0; t--) {
+          if (flowsCache[t] !== 0 || rentasCache[t] !== 0) {
+            ultimoMes = t;
+            break;
+          }
+        }
+        const nMeses = ultimoMes + 1;
+
+        // Parâmetros do cálculo
+        const tmaMensal = Math.pow(1 + tmaAnualVal, 1 / 12) - 1;
+        // Tributos sobre aluguel: IR(15%×32%) + CSLL(9%×32%) + AdicIR(3.2%) = 10.88%
+        const netFator = 1 - (0.15 * 0.32 + 0.09 * 0.32 + 0.032); // 0.8912
+
+        // Decomposição: VPL é LINEAR em P (preço mensal)
+        // VPL = P × coefP + constVPL = 0  →  P = -constVPL / coefP
+        let coefP = 0;
+        let constVPL = 0;
+
+        for (let t = 0; t < nMeses; t++) {
+          const df = 1 / Math.pow(1 + tmaMensal, t + 1); // fator de desconto NPV
+          const renta = rentasCache[t];
+          const flow = flowsCache[t];
+          const financMes = financCache[t];
+          // Nosso financiamento: ativo nos meses 1..prazoSelecionado
+          const nossaFinanc = (t >= 1 && t <= prazoSelecionado) ? parcelaMensal : 0;
+
+          if (renta > 0) {
+            // Mês COM aluguel — decompor custos e reconstruir com novo P
+            // flow = renta × netFator - financMes - custosExtras
+            // custosExtras = renta × netFator - financMes - flow (IPVA, seguro, etc.)
+            coefP += (renta / precoCache) * netFator * df;
+            constVPL += (flow + financMes - nossaFinanc - renta * netFator) * df;
+          } else if (t === nMeses - 1 && flow > 1000) {
+            // Último mês com venda — usar nosso valor calculado
+            constVPL += valorLiquidoFinalVenda * df;
+          } else {
+            // Mês SEM aluguel — ajustar diferença de financiamento
+            constVPL += (flow + financMes - nossaFinanc) * df;
+          }
+        }
+
+        // Resolver: P = -constVPL / coefP
+        const precoGoalSeek = coefP > 0
+          ? Math.round((-constVPL / coefP) * 100) / 100
+          : 0;
+
+        // Escrever H66 (preço mensal calculado)
+        if (precoGoalSeek > 0) {
+          cashflowXml = substituirValorCelula(cashflowXml, 'H66', precoGoalSeek);
+        }
+
+        // Escrever TMA Mensal, VPL e TIR Mensal para consistência (útil se o Excel estiver em cálculo manual)
+        cashflowXml = substituirValorCelula(cashflowXml, 'H70', tmaMensal);
+        cashflowXml = substituirValorCelula(cashflowXml, 'H72', 0); // VPL é zerado pelo Goal Seek
+        cashflowXml = substituirValorCelula(cashflowXml, 'H74', tmaMensal); // TIR Mensal = TMA Mensal
+
+        zip.file(abaCashflow.path, cashflowXml);
+      }
+
+      // ── 7. Aba "Financ" — 1 célula (Taxa de Juros Mensal) ──
+      const abaFinanc = await resolverAbaNoZip('Financ');
+      if (abaFinanc) {
+        let financXml = abaFinanc.xml;
+        financXml = substituirValorCelula(financXml, 'B38', jurosSimulado);
+        zip.file(abaFinanc.path, financXml);
+      }
+
+      // 8. Remover calcChain.xml para evitar inconsistência — o Excel reconstrói ao abrir
+      zip.remove('xl/calcChain.xml');
+
+      // 9. Gerar o buffer com compressão DEFLATE e disparar o download
       const buffer = await zip.generateAsync({
         type: 'arraybuffer',
         compression: 'DEFLATE',
@@ -1125,7 +1257,7 @@ export function CalculoItemModal({
                           Desvalorização ao Término do Contrato
                         </span>
                         <span style={{ fontSize: '14px', color: 'var(--color-grey-800)', fontWeight: 700 }}>
-                          {(desvalorizacaoPercentual * 100).toFixed(2)}% <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--color-grey-500)' }}>(representa {(representacaoCompraPercentual * 100).toFixed(2)}% do valor de compra)</span>
+                          {(desvalorizacaoPercentual * 100).toFixed(2)}%
                         </span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

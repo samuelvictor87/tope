@@ -25,6 +25,7 @@ export function DespesasOperacionais({
   const [ipvaDesconto, setIpvaDesconto] = useState<number | string>('');
   const [ipvaDepreciacao, setIpvaDepreciacao] = useState<number | string>('');
   const [reajusteAluguel, setReajusteAluguel] = useState<number | string>('');
+  const [tmaAnual, setTmaAnual] = useState<number | string>('');
   const [mesesAntes, setMesesAntes] = useState<number | string>('');
   const [mesesDepois, setMesesDepois] = useState<number | string>('');
   const [salvando, setSalvando] = useState(false);
@@ -36,6 +37,7 @@ export function DespesasOperacionais({
       setIpvaDesconto(configuracao.ipva_desconto_vista_percentual * 100);
       setIpvaDepreciacao(configuracao.ipva_depreciacao_percentual * 100);
       setReajusteAluguel(configuracao.reajuste_aluguel_anual_percentual * 100);
+      setTmaAnual(configuracao.tma_anual_percentual * 100);
       setMesesAntes(configuracao.meses_antes_aluguel ?? 1);
       setMesesDepois(configuracao.meses_depois_aluguel ?? 3);
     }
@@ -48,6 +50,7 @@ export function DespesasOperacionais({
     const ipvaDescontoVal = Number(ipvaDesconto);
     const ipvaDepreciacaoVal = Number(ipvaDepreciacao);
     const reajusteAluguelVal = Number(reajusteAluguel);
+    const tmaAnualVal = Number(tmaAnual);
     const mesesAntesVal = Number(mesesAntes);
     const mesesDepoisVal = Number(mesesDepois);
 
@@ -67,6 +70,10 @@ export function DespesasOperacionais({
       toast.error('Erro', 'Índice de reajuste anual deve ser um valor válido.');
       return;
     }
+    if (isNaN(tmaAnualVal) || tmaAnualVal < 0) {
+      toast.error('Erro', 'TMA Anual deve ser um valor válido.');
+      return;
+    }
     if (isNaN(mesesAntesVal) || mesesAntesVal < 0) {
       toast.error('Erro', 'Meses antes do aluguel deve ser um valor válido.');
       return;
@@ -82,6 +89,7 @@ export function DespesasOperacionais({
       ipva_desconto_vista_percentual: ipvaDescontoVal / 100,
       ipva_depreciacao_percentual: ipvaDepreciacaoVal / 100,
       reajuste_aluguel_anual_percentual: reajusteAluguelVal / 100,
+      tma_anual_percentual: tmaAnualVal / 100,
       meses_antes_aluguel: mesesAntesVal,
       meses_depois_aluguel: mesesDepoisVal,
     });
@@ -135,6 +143,14 @@ export function DespesasOperacionais({
           label="Reajuste anual aluguel (%)"
           value={reajusteAluguel}
           onChange={(v) => setReajusteAluguel(v)}
+          step={0.01}
+          min={0}
+          required
+        />
+        <InputNumber
+          label="TMA Anual (%)"
+          value={tmaAnual}
+          onChange={(v) => setTmaAnual(v)}
           step={0.01}
           min={0}
           required

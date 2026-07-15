@@ -17,6 +17,7 @@ export interface ConfiguracaoLocacao {
   ipva_desconto_vista_percentual: number;
   ipva_depreciacao_percentual: number;
   reajuste_aluguel_anual_percentual: number;
+  tma_anual_percentual: number;
   meses_antes_aluguel: number;
   meses_depois_aluguel: number;
   criado_em: string;
@@ -97,6 +98,7 @@ export interface ConfiguracaoLocacaoPayload {
   ipva_desconto_vista_percentual?: number;
   ipva_depreciacao_percentual?: number;
   reajuste_aluguel_anual_percentual?: number;
+  tma_anual_percentual?: number;
   meses_antes_aluguel?: number;
   meses_depois_aluguel?: number;
 }

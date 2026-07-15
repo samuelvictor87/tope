@@ -183,6 +183,7 @@ export function NovaCotacaoPage() {
   const [cotIpvaDesconto, setCotIpvaDesconto] = useState('');
   const [cotIpvaDepreciacao, setCotIpvaDepreciacao] = useState('');
   const [cotReajusteAluguel, setCotReajusteAluguel] = useState('');
+  const [cotTmaAnual, setCotTmaAnual] = useState('');
   const [cotMesesAntesAluguel, setCotMesesAntesAluguel] = useState('');
   const [cotMesesDepoisAluguel, setCotMesesDepoisAluguel] = useState('');
 
@@ -244,6 +245,7 @@ export function NovaCotacaoPage() {
             setCotIpvaDesconto(data.ipva_desconto_vista_percentual != null ? String(+(data.ipva_desconto_vista_percentual * 100).toFixed(4)) : '');
             setCotIpvaDepreciacao(data.ipva_depreciacao_percentual != null ? String(+(data.ipva_depreciacao_percentual * 100).toFixed(4)) : '');
             setCotReajusteAluguel(data.reajuste_aluguel_anual_percentual != null ? String(+(data.reajuste_aluguel_anual_percentual * 100).toFixed(4)) : '');
+            setCotTmaAnual(data.tma_anual_percentual != null ? String(+(data.tma_anual_percentual * 100).toFixed(4)) : '');
             setCotMesesAntesAluguel(String(data.meses_antes_aluguel ?? ''));
             setCotMesesDepoisAluguel(String(data.meses_depois_aluguel ?? ''));
           }
@@ -304,6 +306,7 @@ export function NovaCotacaoPage() {
         setCotIpvaDesconto(cot.ipva_desconto_vista_percentual != null ? String(+(cot.ipva_desconto_vista_percentual * 100).toFixed(4)) : '');
         setCotIpvaDepreciacao(cot.ipva_depreciacao_percentual != null ? String(+(cot.ipva_depreciacao_percentual * 100).toFixed(4)) : '');
         setCotReajusteAluguel(cot.reajuste_aluguel_anual_percentual != null ? String(+(cot.reajuste_aluguel_anual_percentual * 100).toFixed(4)) : '');
+        setCotTmaAnual(cot.tma_anual_percentual != null ? String(+(cot.tma_anual_percentual * 100).toFixed(4)) : '');
         setCotMesesAntesAluguel(cot.meses_antes_aluguel != null ? String(cot.meses_antes_aluguel) : '');
         setCotMesesDepoisAluguel(cot.meses_depois_aluguel != null ? String(cot.meses_depois_aluguel) : '');
 
@@ -569,6 +572,7 @@ export function NovaCotacaoPage() {
         ipva_desconto_vista_percentual: cotIpvaDesconto !== '' ? parseFloat(cotIpvaDesconto) / 100 : null,
         ipva_depreciacao_percentual: cotIpvaDepreciacao !== '' ? parseFloat(cotIpvaDepreciacao) / 100 : null,
         reajuste_aluguel_anual_percentual: cotReajusteAluguel !== '' ? parseFloat(cotReajusteAluguel) / 100 : null,
+        tma_anual_percentual: cotTmaAnual !== '' ? parseFloat(cotTmaAnual) / 100 : null,
         meses_antes_aluguel: cotMesesAntesAluguel !== '' ? parseInt(cotMesesAntesAluguel, 10) : null,
         meses_depois_aluguel: cotMesesDepoisAluguel !== '' ? parseInt(cotMesesDepoisAluguel, 10) : null,
       };
@@ -950,6 +954,7 @@ export function NovaCotacaoPage() {
                   { label: 'IPVA desconto à vista (%)', value: cotIpvaDesconto, set: setCotIpvaDesconto, hint: '3' },
                   { label: 'IPVA depreciação (%)', value: cotIpvaDepreciacao, set: setCotIpvaDepreciacao, hint: '15' },
                   { label: 'Reajuste anual aluguel (%)', value: cotReajusteAluguel, set: setCotReajusteAluguel, hint: '4' },
+                  { label: 'TMA Anual (%)', value: cotTmaAnual, set: setCotTmaAnual, hint: '30' },
                   { label: 'Meses antes (Preparação)', value: cotMesesAntesAluguel, set: setCotMesesAntesAluguel, hint: '1' },
                   { label: 'Meses depois (Venda)', value: cotMesesDepoisAluguel, set: setCotMesesDepoisAluguel, hint: '3' },
                 ].map(({ label, value, set, hint }) => (
@@ -1334,6 +1339,7 @@ export function NovaCotacaoPage() {
           ipva_desconto_vista_percentual: cotIpvaDesconto !== '' ? parseFloat(cotIpvaDesconto) / 100 : undefined,
           ipva_depreciacao_percentual: cotIpvaDepreciacao !== '' ? parseFloat(cotIpvaDepreciacao) / 100 : undefined,
           reajuste_aluguel_anual_percentual: cotReajusteAluguel !== '' ? parseFloat(cotReajusteAluguel) / 100 : undefined,
+          tma_anual_percentual: cotTmaAnual !== '' ? parseFloat(cotTmaAnual) / 100 : undefined,
           meses_antes_aluguel: cotMesesAntesAluguel !== '' ? parseInt(cotMesesAntesAluguel, 10) : undefined,
           meses_depois_aluguel: cotMesesDepoisAluguel !== '' ? parseInt(cotMesesDepoisAluguel, 10) : undefined,
         }}
