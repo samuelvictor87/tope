@@ -17,6 +17,7 @@ import {
   substituirValorCelula,
 } from '../../utils/financialUtils';
 import type { GoalSeekResult } from '../../utils/financialUtils';
+import { getTemplateConfig } from '../../utils/templateConfig';
 
 // ─── Máscara de Moeda BRL ───────────────────────────────────────────────────
 function formatCurrency(raw: string): string {
@@ -56,7 +57,10 @@ interface CalculoItemModalProps {
   item: ItemLocal | null;
   prazosCotaque: number[];
   taxasCotacao: TaxasCotacao;
-  onSave: (updatedFields: Partial<ItemLocal>) => void;
+  onSave?: (updatedFields: Partial<ItemLocal>) => void;
+  projetoCriadoEm?: string | null;
+  clienteNome?: string | null;
+  cotacaoVersao?: number;
 }
 
 export function CalculoItemModal({
@@ -66,6 +70,9 @@ export function CalculoItemModal({
   prazosCotaque,
   taxasCotacao,
   onSave,
+  projetoCriadoEm,
+  clienteNome,
+  cotacaoVersao,
 }: CalculoItemModalProps) {
   const toast = useToast();
 
@@ -278,16 +285,60 @@ export function CalculoItemModal({
   useEffect(() => {
     const tmaVal = taxasCotacao?.tma_anual_percentual;
     if (tmaVal != null && tmaVal > 0) {
-      // Se vier como decimal (0.30), converter para percentual (30)
       const pct = tmaVal <= 1 ? tmaVal * 100 : tmaVal;
       setTmaAnualInput(pct.toFixed(2).replace('.', ','));
     }
   }, [taxasCotacao?.tma_anual_percentual]);
 
-  // ── Resetar resultado quando parâmetros mudam ──
+  // Carregar cálculo salvo se os parâmetros locais forem idênticos aos salvos no banco (sem alterações pendentes)
   useEffect(() => {
+    if (!isOpen || !item) return;
+
+    const caminhaoValorNum = parseCurrency(caminhaoValor);
+    const implementoValorNum = parseCurrency(implementoValor);
+
+    const itemCaminhaoValor = item.caminhao_valor || 0;
+    const itemImplementoValor = item.implemento_valor || 0;
+
+    // Se os valores na tela batem com os valores do item no banco e o prazo tem valor calculado
+    if (
+      caminhaoValorNum === itemCaminhaoValor &&
+      implementoValorNum === itemImplementoValor &&
+      caminhaoTipoUso === (item.caminhao_tipo_uso || 'Leve/Moderado') &&
+      implementoTipoUso === (item.implemento_tipo_uso || 'Leve/Moderado')
+    ) {
+      const calc = item.valoresCalculados?.[prazoSelecionado];
+      if (calc && calc.preco_aluguel > 0) {
+        setGoalSeekResult({
+          precoMensalAluguel: calc.preco_aluguel,
+          vpl: calc.vpl,
+          tirMensal: calc.tir,
+          tmaMensal: Math.pow(1 + (Number(tmaAnualInput.replace(',', '.')) / 100), 1/12) - 1,
+          cashFlowDisplay: [],
+        });
+        return;
+      }
+    }
+
+    // Se o usuário alterou algum parâmetro de compra, limpa o cálculo
     setGoalSeekResult(null);
-  }, [prazoSelecionado, caminhaoValor, implementoValor, caminhaoTipoUso, implementoTipoUso, jurosSimulado]);
+  }, [
+    isOpen,
+    prazoSelecionado,
+    item,
+    caminhaoValor,
+    implementoValor,
+    caminhaoTipoUso,
+    implementoTipoUso,
+    tmaAnualInput,
+  ]);
+
+  // Rodar Goal Seek silenciosamente para preencher dados do fluxo de caixa ao acessar a aba 'cashflow'
+  useEffect(() => {
+    if (isOpen && activeTab === 'cashflow' && goalSeekResult && goalSeekResult.cashFlowDisplay.length === 0 && !calculandoAluguel) {
+      handleCalcularAluguel(true);
+    }
+  }, [isOpen, activeTab, goalSeekResult]);
 
   if (!isOpen || !item) return null;
 
@@ -396,7 +447,7 @@ export function CalculoItemModal({
   }
 
   // ── Calcular Aluguel (Goal Seek via Template Excel) ──
-  const handleCalcularAluguel = async () => {
+  async function handleCalcularAluguel(isSilencioso: boolean = false) {
     try {
       setCalculandoAluguel(true);
 
@@ -404,14 +455,17 @@ export function CalculoItemModal({
       const tmaStr = tmaAnualInput.replace(',', '.');
       const tmaPct = parseFloat(tmaStr);
       if (isNaN(tmaPct) || tmaPct <= 0) {
-        toast.error('TMA Anual deve ser um valor positivo (ex: 30,00).');
+        if (!isSilencioso) {
+          toast.error('TMA Anual deve ser um valor positivo (ex: 30,00).');
+        }
         return;
       }
       const tmaAnual = tmaPct / 100; // ex: 0.30
 
-      // Carregar template Excel
-      const response = await fetch('/planilha-base.xlsx');
-      if (!response.ok) throw new Error('Não foi possível carregar a planilha base.');
+      // Carregar template Excel para o prazo selecionado
+      const templateConfig = getTemplateConfig(prazoSelecionado);
+      const response = await fetch(templateConfig.arquivo);
+      if (!response.ok) throw new Error(`Não foi possível carregar a planilha base (${prazoSelecionado}m).`);
       const arrayBuffer = await response.arrayBuffer();
       const zip = await JSZip.loadAsync(arrayBuffer);
 
@@ -425,17 +479,22 @@ export function CalculoItemModal({
         parcelaMensal,
         prazoFinanciamento: prazoSelecionado,
         valorLiquidoFinalVenda,
+        reajusteAnual: taxasCotacao?.reajuste_aluguel_anual_percentual ?? 0,
       });
 
       setGoalSeekResult(result);
-      toast.success(`Aluguel calculado: ${result.precoMensalAluguel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
+      if (!isSilencioso) {
+        toast.success(`Aluguel calculado: ${result.precoMensalAluguel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
+      }
     } catch (err) {
       console.error('Erro ao calcular aluguel:', err);
-      toast.error(err instanceof Error ? err.message : 'Erro ao calcular aluguel.');
+      if (!isSilencioso) {
+        toast.error(err instanceof Error ? err.message : 'Erro ao calcular aluguel.');
+      }
     } finally {
       setCalculandoAluguel(false);
     }
-  };
+  }
 
   // ── Exportar Excel ──
 
@@ -443,9 +502,10 @@ export function CalculoItemModal({
     try {
       setExportando(true);
 
-      // 1. Buscar o template da planilha base
-      const response = await fetch('/planilha-base.xlsx');
-      if (!response.ok) throw new Error('Não foi possível carregar a planilha base.');
+      // 1. Buscar o template da planilha base para o prazo selecionado
+      const templateConfig = getTemplateConfig(prazoSelecionado);
+      const response = await fetch(templateConfig.arquivo);
+      if (!response.ok) throw new Error(`Não foi possível carregar a planilha base (${prazoSelecionado}m).`);
       const arrayBuffer = await response.arrayBuffer();
 
       // 2. Abrir o xlsx como ZIP (xlsx = ZIP de XMLs)
@@ -463,7 +523,7 @@ export function CalculoItemModal({
       dadosXml = substituirValorCelula(dadosXml, 'C29', parseCurrency(caminhaoValor));
       dadosXml = substituirValorCelula(dadosXml, 'C30', parseCurrency(implementoValor));
       dadosXml = substituirValorCelula(dadosXml, 'C36', valorLíquidoVenda);
-      dadosXml = substituirValorCelula(dadosXml, 'F29', taxaComissao);
+      dadosXml = substituirValorCelula(dadosXml, templateConfig.celulaComissao, taxaComissao);
       dadosXml = substituirValorCelula(dadosXml, 'C38', taxaDepContabil);
       zip.file(abaDados.path, dadosXml);
 
@@ -484,12 +544,10 @@ export function CalculoItemModal({
 
         // ── Goal Seek: Usar resultado já calculado na UI, ou calcular agora ──
         let precoGoalSeek: number;
-        let tmaMensal: number;
 
         if (goalSeekResult && goalSeekResult.precoMensalAluguel > 0) {
           // Reutilizar resultado já calculado na UI
           precoGoalSeek = goalSeekResult.precoMensalAluguel;
-          tmaMensal = goalSeekResult.tmaMensal;
         } else {
           // Fallback: calcular via template (mesmo comportamento anterior)
           const templateData = await readTemplateCashFlowData(zip);
@@ -499,20 +557,22 @@ export function CalculoItemModal({
             parcelaMensal,
             prazoFinanciamento: prazoSelecionado,
             valorLiquidoFinalVenda,
+            reajusteAnual: taxasCotacao?.reajuste_aluguel_anual_percentual ?? 0,
           });
           precoGoalSeek = result.precoMensalAluguel;
-          tmaMensal = result.tmaMensal;
         }
 
-        // Escrever H66 (preço mensal calculado)
+        // Escrever H66 (preço mensal calculado pelo Goal Seek)
         if (precoGoalSeek > 0) {
           cashflowXml = substituirValorCelula(cashflowXml, 'H66', precoGoalSeek);
         }
 
-        // Escrever TMA Mensal, VPL e TIR Mensal
-        cashflowXml = substituirValorCelula(cashflowXml, 'H70', tmaMensal);
-        cashflowXml = substituirValorCelula(cashflowXml, 'H72', 0); // VPL é zerado pelo Goal Seek
-        cashflowXml = substituirValorCelula(cashflowXml, 'H74', tmaMensal); // TIR Mensal = TMA Mensal
+        // NÃO sobrescrever H70 (TMA Mensal), H72 (VPL), H74 (TIR Mensal):
+        // Essas células TÊM fórmulas no Excel que recalculam automaticamente.
+        // H70 = (1+H68)^(1/12)-1 → recalcula a partir de H68
+        // H72 = NPV(H70,H63:AJ63) → recalcula a partir de H70 e dos fluxos
+        // H74 = TIR → recalcula automaticamente
+        // Sobrescrever destruiria as fórmulas e quebraria o Goal Seek no Excel.
 
         zip.file(abaCashflow.path, cashflowXml);
       }
@@ -528,7 +588,29 @@ export function CalculoItemModal({
       // 8. Remover calcChain.xml para evitar inconsistência — o Excel reconstrói ao abrir
       zip.remove('xl/calcChain.xml');
 
-      // 9. Gerar o buffer com compressão DEFLATE e disparar o download
+      // 9. Forçar recálculo completo ao abrir (fullCalcOnLoad)
+      //    Sem isso, o Excel pode usar valores cacheados em vez de recalcular
+      //    as fórmulas de TMA Mensal, VPL, TIR, etc.
+      const workbookXmlPath = 'xl/workbook.xml';
+      let workbookXml = await zip.file(workbookXmlPath)?.async('string') || '';
+      if (workbookXml) {
+        if (workbookXml.includes('<calcPr')) {
+          // Adicionar fullCalcOnLoad ao calcPr existente
+          workbookXml = workbookXml.replace(
+            /<calcPr([^/]*)\/>/,
+            '<calcPr$1 fullCalcOnLoad="1"/>'
+          );
+        } else {
+          // Inserir calcPr antes do fechamento de </workbook>
+          workbookXml = workbookXml.replace(
+            '</workbook>',
+            '<calcPr fullCalcOnLoad="1"/></workbook>'
+          );
+        }
+        zip.file(workbookXmlPath, workbookXml);
+      }
+
+      // 10. Gerar o buffer com compressão DEFLATE e disparar o download
       const buffer = await zip.generateAsync({
         type: 'arraybuffer',
         compression: 'DEFLATE',
@@ -538,8 +620,19 @@ export function CalculoItemModal({
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
-      const nomeItem = item?.descricao || 'item';
-      const nomeArquivo = `Orcamento_${nomeItem.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
+      // Padrão de Codificação para Propostas: LOG2607-A.xlsx
+      const cleanCliente = (clienteNome || 'COT')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+        .replace(/[^a-zA-Z]/g, '') // remove o que não for letra
+        .toUpperCase();
+      const prefixo = cleanCliente.slice(0, 3).padEnd(3, 'X');
+
+      const dataProjeto = projetoCriadoEm ? new Date(projetoCriadoEm) : new Date();
+      const ano = String(dataProjeto.getFullYear()).slice(-2);
+      const mes = String(dataProjeto.getMonth() + 1).padStart(2, '0');
+
+      const letraRodada = String.fromCharCode(65 + ((cotacaoVersao || 1) - 1));
+      const nomeArquivo = `${prefixo}${ano}${mes}-${letraRodada}.xlsx`;
 
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -571,7 +664,9 @@ export function CalculoItemModal({
     };
 
     // Atualiza estado local imediatamente
-    onSave(updatedFields);
+    if (onSave) {
+      onSave(updatedFields);
+    }
 
     // Persiste no banco se o item já existe na cotacao_itens
     if (item?.id) {
@@ -593,7 +688,37 @@ export function CalculoItemModal({
           toast.error('Erro ao salvar no banco', error.message);
           return;
         }
-        toast.success('Parâmetros salvos!', 'Depreciação do item atualizada com sucesso.');
+        // Se houver cálculo ativo para o prazo selecionado, salvar na tabela cotacao_item_valores
+        if (goalSeekResult) {
+          const { data: valExistente } = await supabase
+            .from('cotacao_item_valores')
+            .select('id')
+            .eq('cotacao_item_id', item.id)
+            .eq('prazo', prazoSelecionado)
+            .maybeSingle();
+
+          const payload = {
+            cotacao_item_id: item.id,
+            prazo: prazoSelecionado,
+            preco_aluguel: goalSeekResult.precoMensalAluguel,
+            vpl: goalSeekResult.vpl,
+            tir: goalSeekResult.tirMensal,
+            calculado_em: new Date().toISOString(),
+          };
+
+          if (valExistente?.id) {
+            await supabase
+              .from('cotacao_item_valores')
+              .update(payload)
+              .eq('id', valExistente.id);
+          } else {
+            await supabase
+              .from('cotacao_item_valores')
+              .insert(payload);
+          }
+        }
+
+        toast.success('Parâmetros salvos!', 'Parâmetros e cálculos de aluguel atualizados com sucesso.');
       } catch (err: any) {
         toast.error('Erro inesperado', err.message);
         return;
@@ -942,6 +1067,41 @@ export function CalculoItemModal({
           </button>
         </div>
 
+        {/* Filtro de Prazos (Flag de Visualização) - Acima das Abas */}
+        <div style={{ padding: '16px 24px 12px 24px', backgroundColor: '#fff', borderBottom: '1px solid #f1f5f9' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0',
+            borderRadius: 'var(--radius-md)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Calendar size={18} color="var(--color-primary)" />
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-grey-800)' }}>
+                Prazo de locação para a simulação:
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {prazosCotaque.map(pr => (
+                <button
+                  key={pr}
+                  type="button"
+                  onClick={() => setPrazoSelecionado(pr)}
+                  style={{
+                    padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                    cursor: 'pointer', border: '1px solid',
+                    borderColor: prazoSelecionado === pr ? 'var(--color-primary)' : '#e2e8f0',
+                    backgroundColor: prazoSelecionado === pr ? 'rgba(249,115,22,0.08)' : '#fff',
+                    color: prazoSelecionado === pr ? 'var(--color-primary)' : 'var(--color-grey-600)',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  {pr} meses
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Abas Superiores */}
         <div style={{
           display: 'flex', borderBottom: '1px solid #e2e8f0',
@@ -974,38 +1134,7 @@ export function CalculoItemModal({
           {activeTab === 'dados' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
-              {/* Filtro de Prazos (Flag de Visualização) */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '12px 16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0',
-                borderRadius: 'var(--radius-md)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Calendar size={18} color="var(--color-primary)" />
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-grey-800)' }}>
-                    Prazo de locação para a simulação:
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {prazosCotaque.map(pr => (
-                    <button
-                      key={pr}
-                      type="button"
-                      onClick={() => setPrazoSelecionado(pr)}
-                      style={{
-                        padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                        cursor: 'pointer', border: '1px solid',
-                        borderColor: prazoSelecionado === pr ? 'var(--color-primary)' : '#e2e8f0',
-                        backgroundColor: prazoSelecionado === pr ? 'rgba(249,115,22,0.08)' : '#fff',
-                        color: prazoSelecionado === pr ? 'var(--color-primary)' : 'var(--color-grey-600)',
-                        transition: 'all 0.15s'
-                      }}
-                    >
-                      {pr} meses
-                    </button>
-                  ))}
-                </div>
-              </div>
+
 
               {/* Grid de Inputs Financeiros */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
@@ -2175,38 +2304,7 @@ export function CalculoItemModal({
           {activeTab === 'financiamento' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
-              {/* Filtro de Prazos (Flag de Visualização) */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '12px 16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0',
-                borderRadius: 'var(--radius-md)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Calendar size={18} color="var(--color-primary)" />
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-grey-800)' }}>
-                    Prazo de locação para a simulação:
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {prazosCotaque.map(pr => (
-                    <button
-                      key={pr}
-                      type="button"
-                      onClick={() => setPrazoSelecionado(pr)}
-                      style={{
-                        padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                        cursor: 'pointer', border: '1px solid',
-                        borderColor: prazoSelecionado === pr ? 'var(--color-primary)' : '#e2e8f0',
-                        backgroundColor: prazoSelecionado === pr ? 'rgba(249,115,22,0.08)' : '#fff',
-                        color: prazoSelecionado === pr ? 'var(--color-primary)' : 'var(--color-grey-600)',
-                        transition: 'all 0.15s'
-                      }}
-                    >
-                      {pr} meses
-                    </button>
-                  ))}
-                </div>
-              </div>
+
 
               {/* Grid de Resumos e Inputs */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
@@ -2409,9 +2507,11 @@ export function CalculoItemModal({
               >
                 Cancelar
               </button>
-              <Button variant="primary" size="md" onClick={handleConfirmar} loading={salvando}>
-                {salvando ? 'Salvando...' : 'Salvar Parâmetros'}
-              </Button>
+              {onSave && (
+                <Button variant="primary" size="md" onClick={handleConfirmar} loading={salvando}>
+                  {salvando ? 'Salvando...' : 'Salvar Parâmetros'}
+                </Button>
+              )}
             </div>
           </div>
         </div>

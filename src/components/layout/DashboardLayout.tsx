@@ -34,7 +34,7 @@ export function DashboardLayout({
   const { user, profile, signOut } = useAuth();
 
   const menuItems = [
-    { path: '/painel/cotacoes', label: 'Cotações', icon: <ClipboardText size={20} /> },
+    { path: '/painel/projetos', label: 'Projetos', icon: <ClipboardText size={20} /> },
     { path: '/painel/caminhoes', label: 'Caminhões', icon: <Truck size={20} /> },
     { path: '/painel/implementos', label: 'Implementos', icon: <Wrench size={20} /> },
     { path: '/painel/fornecedores', label: 'Fornecedores', icon: <UsersThree size={20} /> },

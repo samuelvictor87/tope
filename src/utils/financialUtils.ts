@@ -8,6 +8,7 @@ export interface TemplateData {
   flowsCache: number[];     // Fluxo líquido por mês (linha 63 da aba Cashflow)
   rentasCache: number[];    // Aluguel por mês (linha 28)
   financCache: number[];    // Financiamento por mês (linha 11)
+  naoOperCache: number[];   // Não Operacional por mês (linha 60 — contém venda do ativo)
   precoCache: number;       // Preço mensal do template (H66)
   nMeses: number;           // Último mês com dados + 1
 }
@@ -18,6 +19,7 @@ export interface GoalSeekParams {
   parcelaMensal: number;           // Parcela PRICE calculada
   prazoFinanciamento: number;      // Prazo do financiamento em meses
   valorLiquidoFinalVenda: number;  // Valor líquido final da alienação
+  reajusteAnual: number;           // Reajuste anual do aluguel (ex: 0.04 = 4%)
 }
 
 export interface CashFlowDisplayEntry {
@@ -210,22 +212,38 @@ export async function readTemplateCashFlowData(zip: JSZip): Promise<TemplateData
   const cols = gerarColunas();
 
   // Ler valores cacheados de cada mês
-  const flowsCache = cols.map(c => lerCelulaXml(xml, `${c}63`));  // fluxo líquido
-  const rentasCache = cols.map(c => lerCelulaXml(xml, `${c}28`)); // aluguel mensal
-  const financCache = cols.map(c => lerCelulaXml(xml, `${c}11`)); // financiamento mensal
-  const precoCache = lerCelulaXml(xml, 'H66') || 1;               // preço do template
+  const flowsCache = cols.map(c => lerCelulaXml(xml, `${c}63`));    // fluxo líquido
+  const rentasCache = cols.map(c => lerCelulaXml(xml, `${c}28`));   // aluguel mensal
+  const financCache = cols.map(c => lerCelulaXml(xml, `${c}11`));   // financiamento mensal
+  const naoOperCache = cols.map(c => lerCelulaXml(xml, `${c}60`));  // não operacional (venda do ativo)
+  const precoCache = lerCelulaXml(xml, 'H66') || 1;                 // preço do template
 
-  // Encontrar último mês com dados
+  // Determinar nMeses (range do VPL do Excel)
+  // O VPL no Excel vai de H63 até a coluna da venda do ativo (naoOper > threshold).
+  // Fluxos após a venda são informativos e ficam fora do cálculo do VPL.
+  const VENDA_THRESHOLD = 10000;
+  let ultimoMesVenda = -1;
+  for (let t = 0; t < cols.length; t++) {
+    if (naoOperCache[t] > VENDA_THRESHOLD) {
+      ultimoMesVenda = t;
+    }
+  }
+  // Se encontrou venda, o range vai até a coluna da venda (inclusive)
+  // Se não encontrou, usa o último mês com qualquer dado
   let ultimoMes = 0;
-  for (let t = cols.length - 1; t >= 0; t--) {
-    if (flowsCache[t] !== 0 || rentasCache[t] !== 0) {
-      ultimoMes = t;
-      break;
+  if (ultimoMesVenda >= 0) {
+    ultimoMes = ultimoMesVenda;
+  } else {
+    for (let t = cols.length - 1; t >= 0; t--) {
+      if (flowsCache[t] !== 0 || rentasCache[t] !== 0) {
+        ultimoMes = t;
+        break;
+      }
     }
   }
   const nMeses = ultimoMes + 1;
 
-  return { flowsCache, rentasCache, financCache, precoCache, nMeses };
+  return { flowsCache, rentasCache, financCache, naoOperCache, precoCache, nMeses };
 }
 
 // ─── Goal Seek ──────────────────────────────────────────────────────────────
@@ -238,10 +256,10 @@ export async function readTemplateCashFlowData(zip: JSZip): Promise<TemplateData
  *   VPL = P × coefP + constVPL = 0
  *   P = -constVPL / coefP
  * 
- * Para cada mês COM aluguel, o fluxo é decomposto em:
- *   flow = (renta/precoCache) × P × netFator - financiamento - custosExtras
- * 
- * Onde custosExtras (IPVA, seguro, etc.) são extraídos implicitamente do template.
+ * Classificação de meses:
+ *   - VENDA: naoOperCache[t] > 10.000 → substituir pelo valorLiquidoFinalVenda do usuário
+ *   - ALUGUEL: rentasCache[t] > 0 → decompor proporcionalmente ao preço
+ *   - SEM_ALG: demais → ajustar diferença de financiamento
  */
 export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
   const {
@@ -250,9 +268,10 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
     parcelaMensal,
     prazoFinanciamento,
     valorLiquidoFinalVenda,
+    reajusteAnual,
   } = params;
 
-  const { flowsCache, rentasCache, financCache, precoCache, nMeses } = templateData;
+  const { flowsCache, rentasCache, financCache, naoOperCache, precoCache, nMeses } = templateData;
 
   // Calcular TMA mensal
   const tmaMensal = Math.pow(1 + tmaAnual, 1 / 12) - 1;
@@ -261,7 +280,19 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
   // IR(15%×32%) + CSLL(9%×32%) + AdicIR(3.2%) = 10.88%
   const netFator = 1 - (0.15 * 0.32 + 0.09 * 0.32 + 0.032); // 0.8912
 
+  // Threshold para detectar venda do ativo na Row 60 (Não Operacional)
+  const VENDA_THRESHOLD = 10000;
+
+  // Detectar primeiro mês com renda para calcular o ano de reajuste
+  let firstRentMonth = -1;
+  for (let t = 0; t < nMeses; t++) {
+    if (rentasCache[t] > 0) { firstRentMonth = t; break; }
+  }
+
   // ── Decomposição linear: VPL = P × coefP + constVPL = 0 ──
+  // IMPORTANTE: Usa o reajuste do SISTEMA (não o do template) para coefP.
+  // O template pode ter reajuste diferente (ex: 3%), enquanto o sistema usa 4%.
+  // constVPL é independente do reajuste (só depende de custos fixos).
   let coefP = 0;
   let constVPL = 0;
 
@@ -270,20 +301,38 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
     const renta = rentasCache[t];
     const flow = flowsCache[t];
     const financMes = financCache[t];
+    const naoOper = naoOperCache[t];
     // Nosso financiamento: ativo nos meses 1..prazoFinanciamento
     const nossaFinanc = (t >= 1 && t <= prazoFinanciamento) ? parcelaMensal : 0;
 
-    if (renta > 0) {
-      // Mês COM aluguel — decompor custos e reconstruir com novo P
-      // coeficiente de P: proporção do aluguel × netFator × desconto
-      coefP += (renta / precoCache) * netFator * df;
-      // constante: custos fixos (exceto aluguel)
-      constVPL += (flow + financMes - nossaFinanc - renta * netFator) * df;
-    } else if (t === nMeses - 1 && flow > 1000) {
-      // Último mês com venda — usar nosso valor calculado
+    // Calcular o multiplicador de reajuste para este mês:
+    // Usa reajusteAnual do SISTEMA, composto anualmente a partir do firstRentMonth.
+    // Ano 0 (meses 0-11 de renda): ratio = 1.0
+    // Ano 1 (meses 12-23): ratio = (1 + reajuste)
+    // Ano 2 (meses 24-35): ratio = (1 + reajuste)²
+    const ratio = (renta > 0 && firstRentMonth >= 0)
+      ? Math.pow(1 + reajusteAnual, Math.floor((t - firstRentMonth) / 12))
+      : 0;
+
+    if (naoOper > VENDA_THRESHOLD) {
+      // ── Mês com VENDA do ativo (detectado via Row 60 Não Operacional) ──
+      const flowSemVenda = flow - naoOper;
+      if (renta > 0) {
+        // Mês com venda E aluguel
+        coefP += ratio * netFator * df;
+        constVPL += (flowSemVenda + financMes - nossaFinanc - renta * netFator) * df;
+      } else {
+        // Mês com venda SEM aluguel
+        constVPL += (flowSemVenda + financMes - nossaFinanc) * df;
+      }
+      // Adicionar o valor de venda do USUÁRIO
       constVPL += valorLiquidoFinalVenda * df;
+    } else if (renta > 0) {
+      // ── Mês COM aluguel (sem venda) ──
+      coefP += ratio * netFator * df;
+      constVPL += (flow + financMes - nossaFinanc - renta * netFator) * df;
     } else {
-      // Mês SEM aluguel — ajustar diferença de financiamento
+      // ── Mês SEM aluguel e SEM venda ──
       constVPL += (flow + financMes - nossaFinanc) * df;
     }
   }
@@ -302,28 +351,40 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
     const renta = rentasCache[t];
     const flow = flowsCache[t];
     const financMes = financCache[t];
+    const naoOper = naoOperCache[t];
     const nossaFinanc = (t >= 1 && t <= prazoFinanciamento) ? parcelaMensal : 0;
+
+    // Reajuste anual do sistema para este mês
+    const ratio = (renta > 0 && firstRentMonth >= 0)
+      ? Math.pow(1 + reajusteAnual, Math.floor((t - firstRentMonth) / 12))
+      : 0;
 
     let fluxoLiquido: number;
     let aluguelBruto = 0;
     let custos = 0;
 
-    if (renta > 0) {
-      // Mês COM aluguel — recalcular com novo preço
-      const proporcao = renta / precoCache; // proporção do aluguel do template
-      aluguelBruto = precoMensalAluguel * proporcao;
+    if (naoOper > VENDA_THRESHOLD) {
+      // ── Mês com VENDA ──
+      const flowSemVenda = flow - naoOper;
+      if (renta > 0) {
+        aluguelBruto = precoMensalAluguel * ratio;
+        const aluguelLiquido = aluguelBruto * netFator;
+        const custosExtras = renta * netFator - financMes - flowSemVenda;
+        custos = -(nossaFinanc + custosExtras);
+        fluxoLiquido = aluguelLiquido + custos + valorLiquidoFinalVenda;
+      } else {
+        custos = flowSemVenda + financMes - nossaFinanc;
+        fluxoLiquido = custos + valorLiquidoFinalVenda;
+      }
+    } else if (renta > 0) {
+      // ── Mês COM aluguel ──
+      aluguelBruto = precoMensalAluguel * ratio;
       const aluguelLiquido = aluguelBruto * netFator;
-      // Custos extras do template (IPVA, seguro, etc.)
       const custosExtras = renta * netFator - financMes - flow;
       custos = -(nossaFinanc + custosExtras);
       fluxoLiquido = aluguelLiquido + custos;
-    } else if (t === nMeses - 1 && flow > 1000) {
-      // Último mês (venda)
-      aluguelBruto = 0;
-      custos = 0;
-      fluxoLiquido = valorLiquidoFinalVenda;
     } else {
-      // Mês SEM aluguel
+      // ── Mês SEM aluguel ──
       aluguelBruto = 0;
       custos = flow + financMes - nossaFinanc;
       fluxoLiquido = custos;

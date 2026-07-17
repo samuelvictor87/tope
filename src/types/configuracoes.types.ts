@@ -3,8 +3,8 @@
 export type TipoUsoDepreciacao = 'Leve/Moderado' | 'Severo';
 export const TIPOS_USO_DEPRECIACAO: TipoUsoDepreciacao[] = ['Leve/Moderado', 'Severo'];
 
-export type PrazoContrato = '12' | '24' | '36' | '48' | '60' | '72' | '84';
-export const PRAZOS_CONTRATO: PrazoContrato[] = ['12', '24', '36', '48', '60', '72', '84'];
+export type PrazoContrato = '12' | '24' | '36' | '48' | '60' | '72' | '84' | '120';
+export const PRAZOS_CONTRATO: PrazoContrato[] = ['12', '24', '36', '48', '60', '72', '84', '120'];
 
 export interface ConfiguracaoLocacao {
   id: string;
