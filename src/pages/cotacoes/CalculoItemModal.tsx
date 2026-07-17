@@ -1,6 +1,6 @@
 // pages/cotacoes/CalculoItemModal.tsx — TOPE
 import { useState, useEffect, useRef } from 'react';
-import { Calculator, X, Calendar, FileXls, Info } from '@phosphor-icons/react';
+import { Calculator, X, Calendar, FileXls, Info, CaretDown, CaretUp, ArrowClockwise } from '@phosphor-icons/react';
 import JSZip from 'jszip';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
@@ -10,6 +10,13 @@ import { buscarDepreciacaoCaminhao, buscarDepreciacaoImplemento } from '../../se
 import { supabase } from '../../lib/supabase';
 import type { ItemLocal } from './NovaCotacaoPage';
 import type { TipoUsoDepreciacao } from '../../types/configuracoes.types';
+import {
+  readTemplateCashFlowData,
+  goalSeekFromTemplate,
+  resolverAbaNoZip,
+  substituirValorCelula,
+} from '../../utils/financialUtils';
+import type { GoalSeekResult } from '../../utils/financialUtils';
 
 // ─── Máscara de Moeda BRL ───────────────────────────────────────────────────
 function formatCurrency(raw: string): string {
@@ -110,6 +117,12 @@ export function CalculoItemModal({
 
   // ── Estado de exportação Excel ──
   const [exportando, setExportando] = useState(false);
+
+  // ── Estados do Cálculo de Aluguel ──
+  const [tmaAnualInput, setTmaAnualInput] = useState<string>('30,00');
+  const [goalSeekResult, setGoalSeekResult] = useState<GoalSeekResult | null>(null);
+  const [mostrarFluxoDetalhado, setMostrarFluxoDetalhado] = useState(false);
+  const [calculandoAluguel, setCalculandoAluguel] = useState(false);
 
   // Sincronizar com os prazos da cotação
   useEffect(() => {
@@ -261,6 +274,21 @@ export function CalculoItemModal({
     loadDepreciacoes();
   }, [isOpen, item, caminhaoTipoUso, implementoTipoUso]);
 
+  // ── Inicializar TMA com valor da cotação ──
+  useEffect(() => {
+    const tmaVal = taxasCotacao?.tma_anual_percentual;
+    if (tmaVal != null && tmaVal > 0) {
+      // Se vier como decimal (0.30), converter para percentual (30)
+      const pct = tmaVal <= 1 ? tmaVal * 100 : tmaVal;
+      setTmaAnualInput(pct.toFixed(2).replace('.', ','));
+    }
+  }, [taxasCotacao?.tma_anual_percentual]);
+
+  // ── Resetar resultado quando parâmetros mudam ──
+  useEffect(() => {
+    setGoalSeekResult(null);
+  }, [prazoSelecionado, caminhaoValor, implementoValor, caminhaoTipoUso, implementoTipoUso, jurosSimulado]);
+
   if (!isOpen || !item) return null;
 
   // ── Cálculos da Planilha Ano a Ano ──
@@ -367,6 +395,48 @@ export function CalculoItemModal({
     parcelaMensal = valorCompraTotal * (iFinanc * Math.pow(1 + iFinanc, nFinanc)) / (Math.pow(1 + iFinanc, nFinanc) - 1);
   }
 
+  // ── Calcular Aluguel (Goal Seek via Template Excel) ──
+  const handleCalcularAluguel = async () => {
+    try {
+      setCalculandoAluguel(true);
+
+      // Parsear TMA do input
+      const tmaStr = tmaAnualInput.replace(',', '.');
+      const tmaPct = parseFloat(tmaStr);
+      if (isNaN(tmaPct) || tmaPct <= 0) {
+        toast.error('TMA Anual deve ser um valor positivo (ex: 30,00).');
+        return;
+      }
+      const tmaAnual = tmaPct / 100; // ex: 0.30
+
+      // Carregar template Excel
+      const response = await fetch('/planilha-base.xlsx');
+      if (!response.ok) throw new Error('Não foi possível carregar a planilha base.');
+      const arrayBuffer = await response.arrayBuffer();
+      const zip = await JSZip.loadAsync(arrayBuffer);
+
+      // Ler dados do template
+      const templateData = await readTemplateCashFlowData(zip);
+
+      // Executar Goal Seek
+      const result = goalSeekFromTemplate({
+        templateData,
+        tmaAnual,
+        parcelaMensal,
+        prazoFinanciamento: prazoSelecionado,
+        valorLiquidoFinalVenda,
+      });
+
+      setGoalSeekResult(result);
+      toast.success(`Aluguel calculado: ${result.precoMensalAluguel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
+    } catch (err) {
+      console.error('Erro ao calcular aluguel:', err);
+      toast.error(err instanceof Error ? err.message : 'Erro ao calcular aluguel.');
+    } finally {
+      setCalculandoAluguel(false);
+    }
+  };
+
   // ── Exportar Excel ──
 
   const handleExportarExcel = async () => {
@@ -381,70 +451,11 @@ export function CalculoItemModal({
       // 2. Abrir o xlsx como ZIP (xlsx = ZIP de XMLs)
       const zip = await JSZip.loadAsync(arrayBuffer);
 
-      // 3. Função auxiliar: substituir valor de uma célula no XML (robusta para self-closing)
-      const substituirValorCelula = (xml: string, celRef: string, novoValor: number): string => {
-        // 1. Tentar encontrar a tag normal <c r="REF" ...>...</c> (não self-closing)
-        const normalRegex = new RegExp(`(<c\\s[^>]*?r="${celRef}"[^>]*(?<!/)>)([\\s\\S]*?)(</c>)`);
-        const normalMatch = xml.match(normalRegex);
-        
-        if (normalMatch) {
-          const inner = normalMatch[2];
-          let newInner = '';
-          if (inner.includes('<v>')) {
-            newInner = inner.replace(/<v>[^<]*<\/v>/, `<v>${novoValor}</v>`);
-          } else {
-            newInner = inner + `<v>${novoValor}</v>`;
-          }
-          return xml.replace(normalRegex, `${normalMatch[1]}${newInner}${normalMatch[3]}`);
-        }
-
-        // 2. Tentar encontrar a tag self-closing <c r="REF" .../>
-        const selfClosingRegex = new RegExp(`(<c\\s[^>]*?r="${celRef}"[^>]*?)/>`);
-        const selfMatch = xml.match(selfClosingRegex);
-        if (selfMatch) {
-          return xml.replace(selfClosingRegex, `${selfMatch[1]}><v>${novoValor}</v></c>`);
-        }
-
-        return xml;
-      };
-
-      // 4. Função auxiliar: localizar e read o XML de qualquer aba pelo nome
-      const resolverAbaNoZip = async (nomeAba: string): Promise<{ xml: string; path: string } | null> => {
-        const workbookXmlStr = await zip.file('xl/workbook.xml')?.async('string');
-        if (!workbookXmlStr) return null;
-
-        const wbDoc = new DOMParser().parseFromString(workbookXmlStr, 'application/xml');
-        const sheets = wbDoc.getElementsByTagName('sheet');
-        let rId = '';
-        for (let i = 0; i < sheets.length; i++) {
-          if (sheets[i].getAttribute('name') === nomeAba) {
-            rId = sheets[i].getAttribute('r:id') ||
-                  sheets[i].getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') || '';
-            break;
-          }
-        }
-        if (!rId) return null;
-
-        const relsXmlStr = await zip.file('xl/_rels/workbook.xml.rels')?.async('string');
-        if (!relsXmlStr) return null;
-
-        const relsDoc = new DOMParser().parseFromString(relsXmlStr, 'application/xml');
-        const rels = relsDoc.getElementsByTagName('Relationship');
-        let sheetPath = '';
-        for (let i = 0; i < rels.length; i++) {
-          if (rels[i].getAttribute('Id') === rId) {
-            sheetPath = 'xl/' + rels[i].getAttribute('Target');
-            break;
-          }
-        }
-        if (!sheetPath) return null;
-
-        const sheetXml = await zip.file(sheetPath)?.async('string');
-        return sheetXml ? { xml: sheetXml, path: sheetPath } : null;
-      };
+      // 3. Funções auxiliares agora importadas de financialUtils.ts
+      //    (substituirValorCelula, resolverAbaNoZip)
 
       // ── 5. Aba "Dados" — 6 células ──
-      const abaDados = await resolverAbaNoZip('Dados');
+      const abaDados = await resolverAbaNoZip(zip, 'Dados');
       if (!abaDados) throw new Error('Aba "Dados" não encontrada no workbook.');
 
       let dadosXml = abaDados.xml;
@@ -457,95 +468,48 @@ export function CalculoItemModal({
       zip.file(abaDados.path, dadosXml);
 
       // ── 6. Aba "Cashflow" — TMA Anual + Goal Seek (Preço Mensal) ──
-      const abaCashflow = await resolverAbaNoZip('Cashflow');
+      const abaCashflow = await resolverAbaNoZip(zip, 'Cashflow');
       if (abaCashflow) {
         let cashflowXml = abaCashflow.xml;
 
+        // Determinar TMA anual a usar
+        const tmaStr = tmaAnualInput.replace(',', '.');
+        const tmaPctExport = parseFloat(tmaStr);
+        const tmaAnualVal = (!isNaN(tmaPctExport) && tmaPctExport > 0)
+          ? tmaPctExport / 100
+          : (taxasCotacao?.tma_anual_percentual ?? 0.30);
+
         // Escrever TMA Anual
-        const tmaAnualVal = taxasCotacao?.tma_anual_percentual ?? 0.30;
         cashflowXml = substituirValorCelula(cashflowXml, 'H68', tmaAnualVal);
 
-        // ── Goal Seek: Calcular Preço Mensal que faz VPL ≈ 0 ──
-        // Helper: ler valor numérico cacheado de uma célula no XML
-        const lerCelulaXml = (ref: string): number => {
-          // Buscar célula: <c r="REF" ...>CONTEUDO</c>
-          // Usa lookbehind (?<!/) para rejeitar self-closing <c .../>
-          const cellRegex = new RegExp(
-            `<c\\s+r="${ref}"[^>]*(?<!/)>([\\s\\S]*?)</c>`
-          );
-          const cellMatch = cashflowXml.match(cellRegex);
-          if (!cellMatch) return 0;
-          const vMatch = cellMatch[1].match(/<v>([^<]*)<\/v>/);
-          return vMatch ? parseFloat(vMatch[1]) : 0;
-        };
+        // ── Goal Seek: Usar resultado já calculado na UI, ou calcular agora ──
+        let precoGoalSeek: number;
+        let tmaMensal: number;
 
-        // Colunas H(idx=7) a AV(idx=47) = 41 meses, conforme range do NPV na planilha
-        const cols: string[] = [];
-        for (let i = 7; i <= 47; i++) {
-          if (i < 26) cols.push(String.fromCharCode(65 + i));
-          else cols.push('A' + String.fromCharCode(65 + i - 26));
+        if (goalSeekResult && goalSeekResult.precoMensalAluguel > 0) {
+          // Reutilizar resultado já calculado na UI
+          precoGoalSeek = goalSeekResult.precoMensalAluguel;
+          tmaMensal = goalSeekResult.tmaMensal;
+        } else {
+          // Fallback: calcular via template (mesmo comportamento anterior)
+          const templateData = await readTemplateCashFlowData(zip);
+          const result = goalSeekFromTemplate({
+            templateData,
+            tmaAnual: tmaAnualVal,
+            parcelaMensal,
+            prazoFinanciamento: prazoSelecionado,
+            valorLiquidoFinalVenda,
+          });
+          precoGoalSeek = result.precoMensalAluguel;
+          tmaMensal = result.tmaMensal;
         }
-
-        // Ler valores cacheados do template para cada mês
-        const flowsCache = cols.map(c => lerCelulaXml(`${c}63`));  // fluxo líquido
-        const rentasCache = cols.map(c => lerCelulaXml(`${c}28`)); // aluguel mensal
-        const financCache = cols.map(c => lerCelulaXml(`${c}11`)); // financiamento mensal
-        const precoCache = lerCelulaXml('H66') || 1;               // preço do template
-
-        // Encontrar último mês com dados (detectar range real)
-        let ultimoMes = 0;
-        for (let t = cols.length - 1; t >= 0; t--) {
-          if (flowsCache[t] !== 0 || rentasCache[t] !== 0) {
-            ultimoMes = t;
-            break;
-          }
-        }
-        const nMeses = ultimoMes + 1;
-
-        // Parâmetros do cálculo
-        const tmaMensal = Math.pow(1 + tmaAnualVal, 1 / 12) - 1;
-        // Tributos sobre aluguel: IR(15%×32%) + CSLL(9%×32%) + AdicIR(3.2%) = 10.88%
-        const netFator = 1 - (0.15 * 0.32 + 0.09 * 0.32 + 0.032); // 0.8912
-
-        // Decomposição: VPL é LINEAR em P (preço mensal)
-        // VPL = P × coefP + constVPL = 0  →  P = -constVPL / coefP
-        let coefP = 0;
-        let constVPL = 0;
-
-        for (let t = 0; t < nMeses; t++) {
-          const df = 1 / Math.pow(1 + tmaMensal, t + 1); // fator de desconto NPV
-          const renta = rentasCache[t];
-          const flow = flowsCache[t];
-          const financMes = financCache[t];
-          // Nosso financiamento: ativo nos meses 1..prazoSelecionado
-          const nossaFinanc = (t >= 1 && t <= prazoSelecionado) ? parcelaMensal : 0;
-
-          if (renta > 0) {
-            // Mês COM aluguel — decompor custos e reconstruir com novo P
-            // flow = renta × netFator - financMes - custosExtras
-            // custosExtras = renta × netFator - financMes - flow (IPVA, seguro, etc.)
-            coefP += (renta / precoCache) * netFator * df;
-            constVPL += (flow + financMes - nossaFinanc - renta * netFator) * df;
-          } else if (t === nMeses - 1 && flow > 1000) {
-            // Último mês com venda — usar nosso valor calculado
-            constVPL += valorLiquidoFinalVenda * df;
-          } else {
-            // Mês SEM aluguel — ajustar diferença de financiamento
-            constVPL += (flow + financMes - nossaFinanc) * df;
-          }
-        }
-
-        // Resolver: P = -constVPL / coefP
-        const precoGoalSeek = coefP > 0
-          ? Math.round((-constVPL / coefP) * 100) / 100
-          : 0;
 
         // Escrever H66 (preço mensal calculado)
         if (precoGoalSeek > 0) {
           cashflowXml = substituirValorCelula(cashflowXml, 'H66', precoGoalSeek);
         }
 
-        // Escrever TMA Mensal, VPL e TIR Mensal para consistência (útil se o Excel estiver em cálculo manual)
+        // Escrever TMA Mensal, VPL e TIR Mensal
         cashflowXml = substituirValorCelula(cashflowXml, 'H70', tmaMensal);
         cashflowXml = substituirValorCelula(cashflowXml, 'H72', 0); // VPL é zerado pelo Goal Seek
         cashflowXml = substituirValorCelula(cashflowXml, 'H74', tmaMensal); // TIR Mensal = TMA Mensal
@@ -554,7 +518,7 @@ export function CalculoItemModal({
       }
 
       // ── 7. Aba "Financ" — 1 célula (Taxa de Juros Mensal) ──
-      const abaFinanc = await resolverAbaNoZip('Financ');
+      const abaFinanc = await resolverAbaNoZip(zip, 'Financ');
       if (abaFinanc) {
         let financXml = abaFinanc.xml;
         financXml = substituirValorCelula(financXml, 'B38', jurosSimulado);
@@ -1857,6 +1821,354 @@ export function CalculoItemModal({
                 </div>
 
               </div>
+
+              {/* ── Seção 3: Cálculo de Aluguel (Locação) ── */}
+              <div style={{
+                padding: '20px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)',
+                backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column', gap: '16px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              }}>
+                <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-800)' }}>
+                    📊 Cálculo de Aluguel (Locação)
+                  </h4>
+                  <span style={{ fontSize: '12px', color: 'var(--color-grey-500)', marginTop: '2px', display: 'block' }}>
+                    Preço mensal de locação calculado via Goal Seek (VPL = 0)
+                  </span>
+                </div>
+
+                {/* Grid 2 colunas: TMA + Preço */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+
+                  {/* Coluna Esquerda: TMA Anual + TMA Mensal */}
+                  <div style={{
+                    padding: '16px', backgroundColor: '#f8fafc', borderRadius: 'var(--radius-sm)',
+                    border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '12px',
+                  }}>
+                    {/* TMA Anual - editável */}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-600)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          TMA Anual (Taxa Mín. Atratividade)
+                        </span>
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            type="button"
+                            title="Ver fórmula de cálculo"
+                            onClick={() => setExplicacaoAtiva(explicacaoAtiva === 'tma-anual' ? null : 'tma-anual')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Info size={14} weight="bold" style={{ color: 'var(--color-grey-400)' }} />
+                          </button>
+                          {explicacaoAtiva === 'tma-anual' && (
+                            <div ref={popoverRef} style={{
+                              position: 'absolute', top: '100%', left: 0, zIndex: 1000,
+                              background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: '8px',
+                              padding: '10px 14px', fontSize: '12px', color: '#78350f',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', whiteSpace: 'nowrap', minWidth: '280px',
+                            }}>
+                              <button type="button" onClick={() => setExplicacaoAtiva(null)} style={{
+                                position: 'absolute', top: '6px', right: '8px', background: 'none',
+                                border: 'none', cursor: 'pointer', color: '#78350f', opacity: 0.7,
+                              }} title="Fechar"><X size={12} weight="bold" /></button>
+                              <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span>🧮</span> Memória de Cálculo:
+                              </div>
+                              Taxa mínima de retorno exigida pelo investidor.<br />
+                              <span style={{ color: '#9a3412', fontWeight: 600 }}>
+                                Valor padrão: {((taxasCotacao?.tma_anual_percentual ?? 0.30) <= 1 ? ((taxasCotacao?.tma_anual_percentual ?? 0.30) * 100) : (taxasCotacao?.tma_anual_percentual ?? 30)).toFixed(2)}%
+                                (configurável em Despesas Operacionais)
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="text"
+                          value={tmaAnualInput}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9,]/g, '');
+                            setTmaAnualInput(val);
+                          }}
+                          style={{
+                            padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 'var(--radius-sm)',
+                            fontSize: '14px', fontWeight: 600, width: '100px', textAlign: 'right',
+                            backgroundColor: '#ffffff',
+                          }}
+                        />
+                        <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-grey-600)' }}>%</span>
+                      </div>
+                    </div>
+
+                    {/* TMA Mensal - readonly */}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-600)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          TMA Mensal
+                        </span>
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            type="button"
+                            title="Ver fórmula de cálculo"
+                            onClick={() => setExplicacaoAtiva(explicacaoAtiva === 'tma-mensal' ? null : 'tma-mensal')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Info size={14} weight="bold" style={{ color: 'var(--color-grey-400)' }} />
+                          </button>
+                          {explicacaoAtiva === 'tma-mensal' && (
+                            <div ref={popoverRef} style={{
+                              position: 'absolute', top: '100%', left: 0, zIndex: 1000,
+                              background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: '8px',
+                              padding: '10px 14px', fontSize: '12px', color: '#78350f',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', whiteSpace: 'nowrap', minWidth: '280px',
+                            }}>
+                              <button type="button" onClick={() => setExplicacaoAtiva(null)} style={{
+                                position: 'absolute', top: '6px', right: '8px', background: 'none',
+                                border: 'none', cursor: 'pointer', color: '#78350f', opacity: 0.7,
+                              }} title="Fechar"><X size={12} weight="bold" /></button>
+                              <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span>🧮</span> Memória de Cálculo:
+                              </div>
+                              Conversão da TMA anual para mensal (juros compostos):<br />
+                              <span style={{ color: '#9a3412', fontWeight: 600 }}>
+                                (1 + {tmaAnualInput}%)^(1/12) - 1 = {goalSeekResult ? (goalSeekResult.tmaMensal * 100).toFixed(4) : '—'}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{
+                        padding: '8px 12px', backgroundColor: '#f1f5f9', borderRadius: 'var(--radius-sm)',
+                        border: '1px solid #e2e8f0', fontSize: '14px', fontWeight: 600, color: 'var(--color-grey-700)',
+                      }}>
+                        {goalSeekResult ? `${(goalSeekResult.tmaMensal * 100).toFixed(4)}%` : '—'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Coluna Direita: Preço Mensal Locação (destaque) */}
+                  <div style={{
+                    padding: '16px', backgroundColor: goalSeekResult ? '#fff7ed' : '#f8fafc',
+                    borderRadius: 'var(--radius-sm)', border: `1px solid ${goalSeekResult ? '#fed7aa' : '#e2e8f0'}`,
+                    display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
+                    gap: '8px', textAlign: 'center',
+                  }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-600)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Preço Mensal Locação / unidade
+                    </span>
+                    <div style={{
+                      fontSize: goalSeekResult ? '24px' : '16px',
+                      fontWeight: 800,
+                      color: goalSeekResult ? 'var(--color-primary-600, #ea580c)' : 'var(--color-grey-400)',
+                      lineHeight: 1.2,
+                    }}>
+                      {goalSeekResult
+                        ? goalSeekResult.precoMensalAluguel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                        : 'Clique em Calcular'}
+                    </div>
+                    {goalSeekResult && (
+                      <span style={{ fontSize: '11px', color: 'var(--color-grey-500)' }}>
+                        por unidade/mês
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Grid 2 colunas: VPL + TIR (mostrar só após calcular) */}
+                {goalSeekResult && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    {/* VPL */}
+                    <div style={{
+                      padding: '12px 16px', backgroundColor: '#f8fafc', borderRadius: 'var(--radius-sm)',
+                      border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-600)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          VPL
+                        </span>
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            type="button"
+                            title="Ver fórmula de cálculo"
+                            onClick={() => setExplicacaoAtiva(explicacaoAtiva === 'vpl' ? null : 'vpl')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Info size={14} weight="bold" style={{ color: 'var(--color-grey-400)' }} />
+                          </button>
+                          {explicacaoAtiva === 'vpl' && (
+                            <div ref={popoverRef} style={{
+                              position: 'absolute', top: '100%', left: 0, zIndex: 1000,
+                              background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: '8px',
+                              padding: '10px 14px', fontSize: '12px', color: '#78350f',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', whiteSpace: 'nowrap', minWidth: '300px',
+                            }}>
+                              <button type="button" onClick={() => setExplicacaoAtiva(null)} style={{
+                                position: 'absolute', top: '6px', right: '8px', background: 'none',
+                                border: 'none', cursor: 'pointer', color: '#78350f', opacity: 0.7,
+                              }} title="Fechar"><X size={12} weight="bold" /></button>
+                              <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span>🧮</span> Memória de Cálculo:
+                              </div>
+                              Valor Presente Líquido do fluxo de caixa, descontado pela TMA mensal.<br />
+                              Deve ser ≈ R$ 0,00 quando o Goal Seek encontra o preço correto.<br />
+                              <span style={{ color: '#9a3412', fontWeight: 600 }}>
+                                VPL = Σ(CFt / (1 + TMA)^t) = {goalSeekResult.vpl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: '14px', fontWeight: 700,
+                        color: Math.abs(goalSeekResult.vpl) < 1 ? '#16a34a' : '#dc2626',
+                      }}>
+                        {goalSeekResult.vpl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </div>
+
+                    {/* TIR Mensal */}
+                    <div style={{
+                      padding: '12px 16px', backgroundColor: '#f8fafc', borderRadius: 'var(--radius-sm)',
+                      border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-600)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          TIR Mensal
+                        </span>
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            type="button"
+                            title="Ver fórmula de cálculo"
+                            onClick={() => setExplicacaoAtiva(explicacaoAtiva === 'tir' ? null : 'tir')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Info size={14} weight="bold" style={{ color: 'var(--color-grey-400)' }} />
+                          </button>
+                          {explicacaoAtiva === 'tir' && (
+                            <div ref={popoverRef} style={{
+                              position: 'absolute', top: '100%', left: 0, zIndex: 1000,
+                              background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: '8px',
+                              padding: '10px 14px', fontSize: '12px', color: '#78350f',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', whiteSpace: 'nowrap', minWidth: '280px',
+                            }}>
+                              <button type="button" onClick={() => setExplicacaoAtiva(null)} style={{
+                                position: 'absolute', top: '6px', right: '8px', background: 'none',
+                                border: 'none', cursor: 'pointer', color: '#78350f', opacity: 0.7,
+                              }} title="Fechar"><X size={12} weight="bold" /></button>
+                              <div style={{ fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span>🧮</span> Memória de Cálculo:
+                              </div>
+                              Taxa Interna de Retorno — taxa que zera o VPL.<br />
+                              Quando o Goal Seek funciona, TIR ≈ TMA Mensal.<br />
+                              <span style={{ color: '#9a3412', fontWeight: 600 }}>
+                                TIR = {goalSeekResult.tirMensal != null ? `${(goalSeekResult.tirMensal * 100).toFixed(4)}%` : 'N/A'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-800)' }}>
+                        {goalSeekResult.tirMensal != null ? `${(goalSeekResult.tirMensal * 100).toFixed(4)}%` : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Botão Calcular Aluguel */}
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                  <Button
+                    onClick={handleCalcularAluguel}
+                    disabled={calculandoAluguel || valorCompraTotal <= 0}
+                    style={{
+                      padding: '10px 24px', fontSize: '14px', fontWeight: 600,
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                    }}
+                  >
+                    {calculandoAluguel ? (
+                      <>
+                        <ArrowClockwise size={16} weight="bold" className="spin" />
+                        Calculando...
+                      </>
+                    ) : goalSeekResult ? (
+                      <>
+                        <ArrowClockwise size={16} weight="bold" />
+                        Recalcular Aluguel
+                      </>
+                    ) : (
+                      <>
+                        <Calculator size={16} weight="bold" />
+                        Calcular Aluguel
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Tabela de Fluxo de Caixa Detalhado (Colapsável) */}
+                {goalSeekResult && goalSeekResult.cashFlowDisplay.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setMostrarFluxoDetalhado(!mostrarFluxoDetalhado)}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer', padding: '8px 0',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        fontSize: '13px', fontWeight: 600, color: 'var(--color-primary-600, #ea580c)',
+                      }}
+                    >
+                      {mostrarFluxoDetalhado ? <CaretUp size={14} weight="bold" /> : <CaretDown size={14} weight="bold" />}
+                      {mostrarFluxoDetalhado ? 'Ocultar' : 'Ver'} Fluxo de Caixa Detalhado ({goalSeekResult.cashFlowDisplay.length} meses)
+                    </button>
+
+                    {mostrarFluxoDetalhado && (
+                      <div style={{
+                        maxHeight: '400px', overflowY: 'auto', borderRadius: 'var(--radius-sm)',
+                        border: '1px solid #e2e8f0', marginTop: '4px',
+                      }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                          <thead>
+                            <tr style={{ backgroundColor: '#f1f5f9', position: 'sticky', top: 0 }}>
+                              <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--color-grey-700)', borderBottom: '2px solid #e2e8f0' }}>Mês</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--color-grey-700)', borderBottom: '2px solid #e2e8f0' }}>Custos</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--color-grey-700)', borderBottom: '2px solid #e2e8f0' }}>Aluguel</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--color-grey-700)', borderBottom: '2px solid #e2e8f0' }}>Fluxo Líquido</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--color-grey-700)', borderBottom: '2px solid #e2e8f0' }}>Acumulado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {goalSeekResult.cashFlowDisplay.map((entry, idx) => (
+                              <tr
+                                key={entry.mes}
+                                style={{
+                                  backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f8fafc',
+                                  borderBottom: '1px solid #f1f5f9',
+                                }}
+                              >
+                                <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 600, color: 'var(--color-grey-600)' }}>
+                                  {entry.mes}
+                                </td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right', color: entry.custos < 0 ? '#dc2626' : 'var(--color-grey-600)' }}>
+                                  {entry.custos !== 0 ? entry.custos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
+                                </td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right', color: entry.aluguelBruto > 0 ? '#16a34a' : 'var(--color-grey-400)' }}>
+                                  {entry.aluguelBruto > 0 ? entry.aluguelBruto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
+                                </td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 600, color: entry.fluxoLiquido >= 0 ? '#16a34a' : '#dc2626' }}>
+                                  {entry.fluxoLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                </td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 600, color: entry.acumulado >= 0 ? '#16a34a' : '#dc2626' }}>
+                                  {entry.acumulado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
             </div>
           )}
 
