@@ -6,7 +6,6 @@ import {
   Trash, 
   Eye,
   CheckCircle,
-  Warning,
   ArrowRight
 } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
@@ -31,7 +30,7 @@ interface Vendedor {
   email: string;
 }
 
-interface Cliente {
+interface _Cliente {
   id: string;
   cnpj: string;
   razao_social: string;
@@ -369,7 +368,7 @@ export function ProjetosPage() {
       case 'Aprovado':
         return <Badge variant="success">Aprovado</Badge>;
       case 'Reprovado':
-        return <Badge variant="danger">Reprovado</Badge>;
+        return <Badge variant="error">Reprovado</Badge>;
       default:
         return <Badge variant="warning">Em andamento</Badge>;
     }
@@ -450,7 +449,7 @@ export function ProjetosPage() {
             <p style={{ fontSize: '13px', color: 'var(--color-grey-500)', margin: '0 0 20px 0' }}>
               Crie o seu primeiro projeto para iniciar uma negociação de locação de veículos.
             </p>
-            <Button onClick={() => setCreateModalOpen(true)} variant="outline">
+            <Button onClick={() => setCreateModalOpen(true)} variant="secondary">
               Criar Novo Projeto
             </Button>
           </div>
@@ -462,7 +461,6 @@ export function ProjetosPage() {
                   <th style={{ width: '80px', textAlign: 'center' }}>PROJETO</th>
                   <th>NOME DO PROJETO</th>
                   <th>CLIENTE</th>
-                  <th>ALUGUEL MENSAL</th>
                   <th>VENDEDOR</th>
                   <th style={{ width: '140px', textAlign: 'center' }}>STATUS</th>
                   <th style={{ width: '120px', textAlign: 'center' }}>ATUALIZADO</th>
@@ -471,31 +469,6 @@ export function ProjetosPage() {
               </thead>
               <tbody>
                 {projetos.map(proj => {
-                  const projetoCotacoes = (proj.cotacoes || []) as any[];
-                  const cotacaoAtiva = projetoCotacoes.find(c => c.ativo) || projetoCotacoes[0];
-
-                  const itensExibicao: Array<{
-                    descricao: string;
-                    quantidade: number;
-                    valores: { [prazo: number]: number };
-                  }> = [];
-
-                  if (cotacaoAtiva && cotacaoAtiva.cotacao_itens) {
-                    cotacaoAtiva.cotacao_itens.forEach((item: any) => {
-                      const valores: { [prazo: number]: number } = {};
-                      if (item.cotacao_item_valores) {
-                        item.cotacao_item_valores.forEach((val: any) => {
-                          valores[val.prazo] = Number(val.preco_aluguel) || 0;
-                        });
-                      }
-                      itensExibicao.push({
-                        descricao: item.descricao || 'Sem descrição',
-                        quantidade: item.quantidade || 1,
-                        valores,
-                      });
-                    });
-                  }
-
                   return (
                     <tr key={proj.id}>
                       <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--color-grey-800)' }}>
@@ -515,44 +488,6 @@ export function ProjetosPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                           <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-grey-800)' }}>{proj.razao_social}</span>
                           <span style={{ fontSize: '11px', color: 'var(--color-grey-450)' }}>{proj.cnpj}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {itensExibicao.length > 0 ? (
-                            itensExibicao.map((item, i) => (
-                              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderBottom: i < itensExibicao.length - 1 ? '1px dashed #f1f5f9' : 'none', paddingBottom: i < itensExibicao.length - 1 ? '4px' : 0 }}>
-                                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-grey-750)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '240px' }}>
-                                  {item.quantidade}x {item.descricao}
-                                </span>
-                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                  {Object.entries(item.valores)
-                                    .sort((a, b) => Number(a[0]) - Number(b[0]))
-                                    .map(([prazo, valor]) => (
-                                      <span
-                                        key={prazo}
-                                        style={{
-                                          fontSize: '10px',
-                                          fontWeight: 600,
-                                          color: 'var(--color-primary)',
-                                          backgroundColor: 'rgba(249,115,22,0.05)',
-                                          padding: '1px 4px',
-                                          borderRadius: '3px',
-                                          border: '1px solid rgba(249,115,22,0.1)',
-                                          whiteSpace: 'nowrap'
-                                        }}
-                                      >
-                                        {prazo}m: {valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                      </span>
-                                    ))}
-                                </div>
-                              </div>
-                            ))
-                          ) : (
-                            <span style={{ fontSize: '11px', color: 'var(--color-grey-400)', fontStyle: 'italic' }}>
-                              Não calculado
-                            </span>
-                          )}
                         </div>
                       </td>
                     <td>
@@ -605,7 +540,7 @@ export function ProjetosPage() {
               <Pagination
                 currentPage={currentPage}
                 totalCount={totalCount}
-                pageSize={ITEMS_PER_PAGE}
+                itemsPerPage={ITEMS_PER_PAGE}
                 onPageChange={(page) => setCurrentPage(page)}
               />
             )}
@@ -690,7 +625,7 @@ export function ProjetosPage() {
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                     onClick={() => setCreateModalOpen(false)}
                     disabled={submitting}
                   >
@@ -716,9 +651,9 @@ export function ProjetosPage() {
           onClose={() => setDeleteConfirmOpen(false)}
           onConfirm={handleConfirmDelete}
           title="Excluir Projeto?"
-          description={`Tem certeza que deseja remover o projeto "${projetoToDelete?.nome}"? Isso irá deletar todas as rodadas e planilhas vinculadas permanentemente.`}
-          confirmText="Excluir tudo"
-          cancelText="Cancelar"
+          message={`Tem certeza que deseja remover o projeto "${projetoToDelete?.nome}"? Isso irá deletar todas as rodadas e planilhas vinculadas permanentemente.`}
+          confirmLabel="Excluir tudo"
+          cancelLabel="Cancelar"
           loading={deleting}
         />
     </DashboardLayout>

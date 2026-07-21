@@ -20,6 +20,10 @@ export interface ConfiguracaoLocacao {
   tma_anual_percentual: number;
   meses_antes_aluguel: number;
   meses_depois_aluguel: number;
+  forma_pagamento_dias_default?: number;
+  validade_proposta_dias_default?: number;
+  indice_reajuste_default?: string;
+  multa_rescisao_antecipada_percentual_default?: number;
   criado_em: string;
   atualizado_em: string;
 }
@@ -101,6 +105,10 @@ export interface ConfiguracaoLocacaoPayload {
   tma_anual_percentual?: number;
   meses_antes_aluguel?: number;
   meses_depois_aluguel?: number;
+  forma_pagamento_dias_default?: number;
+  validade_proposta_dias_default?: number;
+  indice_reajuste_default?: string;
+  multa_rescisao_antecipada_percentual_default?: number;
 }
 
 export interface TaxaFinanciamentoPayload {

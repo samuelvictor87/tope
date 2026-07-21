@@ -690,8 +690,11 @@ export function NovaCotacaoPage() {
 
         const textoFinal = `${descricaoItem.toUpperCase()} (${item.quantidade} UNIDADE${item.quantidade > 1 ? 'S' : ''})`;
 
+        const headerLine1 = currentRowNum;
+        const headerLine2 = currentRowNum + 1;
+
         // 1. Inserir cabeçalho principal da tabela do item (antiga linha 15)
-        const rowHeader1 = sheet.insertRow(currentRowNum, []);
+        const rowHeader1 = sheet.insertRow(headerLine1, []);
         rowHeader1.height = rowCabecalhoModelo.height;
 
         for (let c = 1; c <= 11; c++) {
@@ -704,10 +707,8 @@ export function NovaCotacaoPage() {
           cellDestino.alignment = cellOrigem.alignment;
         }
 
-        currentRowNum++;
-
         // 2. Inserir header secundário da tabela (antiga linha 16)
-        const rowHeader2 = sheet.insertRow(currentRowNum, []);
+        const rowHeader2 = sheet.insertRow(headerLine2, []);
         rowHeader2.height = rowHeaderModelo.height;
         for (let c = 1; c <= 11; c++) {
           const cellOrigem = rowHeaderModelo.getCell(c);
@@ -719,7 +720,21 @@ export function NovaCotacaoPage() {
           cellDestino.alignment = cellOrigem.alignment;
         }
 
-        currentRowNum++;
+        // Unificar célula A15 com A16 (A do headerLine1 com A do headerLine2)
+        try {
+          sheet.unmergeCells(`A${headerLine1}:A${headerLine2}`);
+        } catch (e) {}
+        sheet.mergeCells(`A${headerLine1}:A${headerLine2}`);
+
+        const cellHeaderA = sheet.getCell(`A${headerLine1}`);
+        cellHeaderA.value = textoFinal;
+        cellHeaderA.alignment = {
+          vertical: 'middle',
+          horizontal: 'center',
+          wrapText: true,
+        };
+
+        currentRowNum += 2;
 
         // Ordenar prazos de forma decrescente (ex: 36, 24)
         const prazosOrdenados = [...prazos].sort((a, b) => b - a);
@@ -736,9 +751,9 @@ export function NovaCotacaoPage() {
           // Preencher colunas
           rowDados.getCell(1).value = ''; // Limpar coluna A
           rowDados.getCell(2).value = isPrimeira ? 'SIM' : ''; // Emplacamento
-          rowDados.getCell(3).value = isPrimeira ? 'LOCATÁRIA' : ''; // Pneus
-          rowDados.getCell(4).value = isPrimeira ? prazo : ''; // Prazo (meses)
-          rowDados.getCell(5).value = isPrimeira ? 'NÃO' : ''; // VW Service
+          rowDados.getCell(3).value = isPrimeira ? 'LOCATÁRIA' : ''; // Pneus/Manutenção
+          rowDados.getCell(4).value = '';
+          rowDados.getCell(5).value = '';
           rowDados.getCell(6).value = isPrimeira ? (estimativaRodagem ? Number(estimativaRodagem) : '') : ''; // Rodagem
           rowDados.getCell(7).value = `${prazo} MESES`; // Prazo contrato
           rowDados.getCell(8).value = precoAluguel; // Valor mensal
@@ -753,10 +768,20 @@ export function NovaCotacaoPage() {
             const cellOrigem = rowDadosModelo.getCell(c);
             const cellDestino = rowDados.getCell(c);
             cellDestino.font = cellOrigem.font;
-            cellDestino.fill = cellOrigem.fill;
             cellDestino.border = cellOrigem.border;
             cellDestino.alignment = cellOrigem.alignment;
             
+            // Garantir fundo branco para colunas A a F nas linhas de prazos adicionais (não primeira)
+            if (!isPrimeira && c <= 6) {
+              cellDestino.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFFFFFF' }
+              };
+            } else {
+              cellDestino.fill = cellOrigem.fill;
+            }
+
             if (c >= 8 && c <= 11) {
               cellDestino.numFormat = '[$R$-416] #,##0.00';
             } else {
@@ -767,8 +792,8 @@ export function NovaCotacaoPage() {
           currentRowNum++;
         });
 
-        // Mesclar a Coluna A verticalmente incluindo o header secundário e deixar em branco para a logo
-        const logoStartLine = startLine - 1;
+        // Mesclar a Coluna A verticalmente nas linhas de dados para a logo TOPE
+        const logoStartLine = startLine;
         const logoEndLine = startLine + prazosOrdenados.length - 1;
         if (logoEndLine >= logoStartLine) {
           try {

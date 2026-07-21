@@ -620,19 +620,62 @@ export function CalculoItemModal({
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
-      // Padrão de Codificação para Propostas: LOG2607-A.xlsx
-      const cleanCliente = (clienteNome || 'COT')
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
-        .replace(/[^a-zA-Z]/g, '') // remove o que não for letra
-        .toUpperCase();
-      const prefixo = cleanCliente.slice(0, 3).padEnd(3, 'X');
+      // Padrão de Codificação para Exportação de Item: ano_mes_dia_modelo do chassi_implemento_prazo.xlsx
+      const hoje = new Date();
+      const ano = hoje.getFullYear();
+      const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+      const dia = String(hoje.getDate()).padStart(2, '0');
 
-      const dataProjeto = projetoCriadoEm ? new Date(projetoCriadoEm) : new Date();
-      const ano = String(dataProjeto.getFullYear()).slice(-2);
-      const mes = String(dataProjeto.getMonth() + 1).padStart(2, '0');
+      let modeloChassiRaw = '';
+      let implementoRaw = '';
 
-      const letraRodada = String.fromCharCode(65 + ((cotacaoVersao || 1) - 1));
-      const nomeArquivo = `${prefixo}${ano}${mes}-${letraRodada}.xlsx`;
+      if (item?.caminhao?.caminhao_modelo) {
+        modeloChassiRaw = item.caminhao.caminhao_modelo;
+      }
+
+      if (item?.implementos && item.implementos.length > 0) {
+        implementoRaw = item.implementos.map(impl => {
+          const attrs = impl.atributos?.map(a => a.atributo_nome).filter(Boolean).join(' ') || '';
+          return attrs ? `${impl.categoria_nome} ${attrs}` : impl.categoria_nome;
+        }).join(' ');
+      }
+
+      // Se não houver chassi ou implemento isolados, extrair da descrição do item (ex: "3/4 com baú 6.2m")
+      if (!modeloChassiRaw || !implementoRaw) {
+        const desc = item?.descricao || '';
+        if (desc) {
+          const descLower = desc.toLowerCase();
+          let divisor = '';
+          if (descLower.includes(' equipado com ')) divisor = ' equipado com ';
+          else if (descLower.includes(' com ')) divisor = ' com ';
+
+          if (divisor) {
+            const partes = desc.split(new RegExp(divisor, 'i'));
+            if (!modeloChassiRaw && partes[0]) modeloChassiRaw = partes[0].trim();
+            if (!implementoRaw && partes[1]) implementoRaw = partes[1].trim();
+          } else {
+            if (!modeloChassiRaw) modeloChassiRaw = desc.trim();
+          }
+        }
+      }
+
+      if (!modeloChassiRaw) modeloChassiRaw = 'Chassi';
+      if (!implementoRaw) implementoRaw = 'Sem_Implemento';
+
+      const cleanPart = (str: string) =>
+        str
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[/\\:]/g, '-')
+          .replace(/[?%*|"<>]/g, '')
+          .trim()
+          .replace(/\s+/g, '_');
+
+      const chassiClean = cleanPart(modeloChassiRaw);
+      const implClean = cleanPart(implementoRaw);
+      const prazoClean = `${prazoSelecionado}m`;
+
+      const nomeArquivo = `${ano}_${mes}_${dia}_${chassiClean}_${implClean}_${prazoClean}.xlsx`;
 
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');

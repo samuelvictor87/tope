@@ -9,6 +9,7 @@ import { TaxasImpostos } from '../configuracoes/tabs/TaxasImpostos';
 import { DepreciacaoCaminhoes } from '../configuracoes/tabs/DepreciacaoCaminhoes';
 import { DepreciacaoImplementos } from '../configuracoes/tabs/DepreciacaoImplementos';
 import { DespesasOperacionais } from '../configuracoes/tabs/DespesasOperacionais';
+import { ConfiguracoesProjeto } from '../configuracoes/tabs/ConfiguracoesProjeto';
 import '../../styles/components/configuracoes-locacao.css';
 
 const TABS_CONFIG = [
@@ -17,6 +18,7 @@ const TABS_CONFIG = [
   { key: 'depreciacao-caminhoes', label: 'Depreciação caminhões' },
   { key: 'depreciacao-implementos', label: 'Depreciação implementos' },
   { key: 'despesas-operacionais', label: 'Despesas operacionais' },
+  { key: 'configuracoes-projeto', label: 'Configurações do projeto' },
 ];
 
 const DEFAULT_TAB = 'investimentos-financiamento';
@@ -77,6 +79,15 @@ export function CalculosPage() {
       case 'despesas-operacionais':
         return (
           <DespesasOperacionais
+            configuracao={configuracao}
+            loadingConfig={loadingConfig}
+            onRefreshConfig={refreshConfig}
+          />
+        );
+
+      case 'configuracoes-projeto':
+        return (
+          <ConfiguracoesProjeto
             configuracao={configuracao}
             loadingConfig={loadingConfig}
             onRefreshConfig={refreshConfig}

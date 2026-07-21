@@ -10,12 +10,15 @@ import {
   CheckCircle,
   XCircle,
   DownloadSimple,
-  Play,
   FileText
 } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import type { OptionType } from '../../components/ui/Select';
+import { Textarea } from '../../components/ui/Textarea';
 import { useToast } from '../../components/ui/Toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -85,6 +88,76 @@ export function ProjetoDetalhesPage() {
   const [loading, setLoading] = useState(true);
   const [cloning, setCloning] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  // Estados para edição do projeto
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [formNome, setFormNome] = useState('');
+  const [formDescricao, setFormDescricao] = useState('');
+  const [formVendedor, setFormVendedor] = useState<OptionType | null>(null);
+  const [vendedorOptions, setVendedorOptions] = useState<OptionType[]>([]);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Carregar opções de Vendedores
+  useEffect(() => {
+    async function loadVendedores() {
+      try {
+        const { data } = await supabase
+          .from('usuarios')
+          .select('id, nome_completo')
+          .in('perfil', ['vendedor', 'administrador'])
+          .order('nome_completo');
+        if (data) {
+          setVendedorOptions(data.map((v: any) => ({ value: v.id, label: v.nome_completo })));
+        }
+      } catch (err) {
+        console.error('Erro ao buscar vendedores:', err);
+      }
+    }
+    loadVendedores();
+  }, []);
+
+  const handleOpenEditModal = () => {
+    if (!projeto) return;
+    setFormNome(projeto.nome || '');
+    setFormDescricao(projeto.descricao || '');
+    if (projeto.vendedor) {
+      setFormVendedor({ value: projeto.vendedor.id, label: projeto.vendedor.nome_completo });
+    } else if (projeto.vendedor_id) {
+      const match = vendedorOptions.find(o => o.value === projeto.vendedor_id);
+      setFormVendedor(match || null);
+    } else {
+      setFormVendedor(null);
+    }
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projeto) return;
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from('projetos')
+        .update({
+          nome: formNome,
+          vendedor_id: formVendedor ? String(formVendedor.value) : null,
+          descricao: formDescricao || null,
+          atualizado_em: new Date().toISOString()
+        })
+        .eq('id', projeto.id);
+
+      if (error) throw error;
+
+      toast.success('Projeto atualizado com sucesso!');
+      setEditModalOpen(false);
+      await loadProjetoDados();
+    } catch (err) {
+      console.error('Erro ao atualizar projeto:', err);
+      toast.error('Erro ao atualizar dados do projeto.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   // Carregar dados do Projeto e suas Cotações
   const loadProjetoDados = useCallback(async () => {
@@ -444,9 +517,31 @@ export function ProjetoDetalhesPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
           <div className="cotacao-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-900)', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
-              Identificação do Negócio
-            </h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
+              <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--color-grey-900)' }}>
+                Identificação do Negócio
+              </h4>
+              <button
+                type="button"
+                onClick={handleOpenEditModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-primary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  padding: '2px 6px',
+                  borderRadius: 'var(--radius-md)'
+                }}
+              >
+                <Pencil size={14} />
+                Editar
+              </button>
+            </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <span style={{ fontSize: '11px', color: 'var(--color-grey-400)', fontWeight: 600, textTransform: 'uppercase' }}>Razão Social</span>
@@ -465,18 +560,18 @@ export function ProjetoDetalhesPage() {
               </span>
             </div>
 
-            {projeto.descricao && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--color-grey-400)', fontWeight: 600, textTransform: 'uppercase' }}>Descrição / Observações</span>
-                <p style={{ fontSize: '12px', color: 'var(--color-grey-600)', margin: 0, lineHeight: '1.4' }}>{projeto.descricao}</p>
-              </div>
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--color-grey-400)', fontWeight: 600, textTransform: 'uppercase' }}>Descrição / Observações</span>
+              <p style={{ fontSize: '12px', color: 'var(--color-grey-600)', margin: 0, lineHeight: '1.4' }}>
+                {projeto.descricao || <span style={{ fontStyle: 'italic', color: 'var(--color-grey-400)' }}>Nenhuma observação informada.</span>}
+              </p>
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid #f1f5f9', paddingTop: '14px', marginTop: '4px' }}>
               <span style={{ fontSize: '11px', color: 'var(--color-grey-400)', fontWeight: 600, textTransform: 'uppercase' }}>Status do Projeto</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {projeto.status === 'Aprovado' && <Badge variant="success">✓ Aprovado</Badge>}
-                {projeto.status === 'Reprovado' && <Badge variant="danger">✗ Reprovado</Badge>}
+                {projeto.status === 'Reprovado' && <Badge variant="error">✗ Reprovado</Badge>}
                 {projeto.status === 'Em andamento' && <Badge variant="warning">Em andamento</Badge>}
               </div>
             </div>
@@ -493,7 +588,7 @@ export function ProjetoDetalhesPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <Button 
                 onClick={() => handleUpdateStatus('Aprovado')} 
-                variant="outline" 
+                variant="secondary" 
                 disabled={updatingStatus || projeto.status === 'Aprovado'}
                 style={{ justifyContent: 'flex-start', color: '#16a34a', borderColor: 'rgba(22,163,74,0.3)', backgroundColor: projeto.status === 'Aprovado' ? 'rgba(22,163,74,0.04)' : '#fff' }}
               >
@@ -502,7 +597,7 @@ export function ProjetoDetalhesPage() {
               </Button>
               <Button 
                 onClick={() => handleUpdateStatus('Reprovado')} 
-                variant="outline"
+                variant="secondary"
                 disabled={updatingStatus || projeto.status === 'Reprovado'}
                 style={{ justifyContent: 'flex-start', color: '#dc2626', borderColor: 'rgba(220,38,38,0.3)', backgroundColor: projeto.status === 'Reprovado' ? 'rgba(220,38,38,0.04)' : '#fff' }}
               >
@@ -512,7 +607,7 @@ export function ProjetoDetalhesPage() {
               {projeto.status !== 'Em andamento' && (
                 <Button 
                   onClick={() => handleUpdateStatus('Em andamento')} 
-                  variant="outline"
+                  variant="secondary"
                   disabled={updatingStatus}
                   style={{ justifyContent: 'flex-start', color: 'var(--color-grey-600)', borderColor: '#e2e8f0' }}
                 >
@@ -538,7 +633,7 @@ export function ProjetoDetalhesPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', borderLeft: '2px solid #e2e8f0', marginLeft: '12px', paddingLeft: '24px', gap: '28px', marginTop: '10px' }}>
               
-              {versoes.map((ver, idx) => {
+              {versoes.map((ver) => {
                 const planilhas = obterPlanilhasRodada(ver);
                 
                 return (
@@ -606,7 +701,7 @@ export function ProjetoDetalhesPage() {
                           ) : (
                             <Button 
                               size="sm" 
-                              variant="outline" 
+                              variant="secondary" 
                               onClick={() => navigate(`/painel/cotacoes/${ver.id}/editar`)}
                               style={{ padding: '6px 12px', fontSize: '12px' }}
                             >
@@ -675,6 +770,72 @@ export function ProjetoDetalhesPage() {
         </div>
 
       </div>
+
+      {/* Modal de Edição do Projeto */}
+      {editModalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal" style={{ width: '100%', maxWidth: '540px', padding: '24px', backgroundColor: '#fff', borderRadius: 'var(--radius-lg)', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--color-grey-900)', margin: 0 }}>
+                Editar Dados do Projeto
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--color-grey-400)', fontWeight: 'bold' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <Input
+                label="Nome do Projeto / Proposta"
+                placeholder="Nome do projeto..."
+                value={formNome}
+                onChange={(e) => setFormNome(e.target.value)}
+                disabled={savingEdit}
+                required
+              />
+
+              <Select
+                label="Vendedor Responsável"
+                options={vendedorOptions}
+                value={formVendedor}
+                onChange={(opt) => setFormVendedor(opt as OptionType | null)}
+                placeholder="Selecione o vendedor..."
+              />
+
+              <Textarea
+                label="Descrição / Observações Gerais"
+                placeholder="Escreva detalhes gerais sobre a negociação..."
+                value={formDescricao}
+                onChange={(e) => setFormDescricao(e.target.value)}
+                disabled={savingEdit}
+                rows={3}
+              />
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setEditModalOpen(false)}
+                  disabled={savingEdit}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  loading={savingEdit}
+                >
+                  Salvar Alterações
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
