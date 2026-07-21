@@ -9,8 +9,11 @@ export interface TemplateData {
   rentasCache: number[];    // Aluguel por mês (linha 28)
   financCache: number[];    // Financiamento por mês (linha 11)
   naoOperCache: number[];   // Não Operacional por mês (linha 60 — contém venda do ativo)
+  custosCache: number[];    // Custos operacionais por mês (linha 13 — IPVA, seguro, manut.)
   precoCache: number;       // Preço mensal do template (H66)
+  templateVehicleValue: number; // Valor total do veículo do template (Dados C29 + C30)
   nMeses: number;           // Último mês com dados + 1
+  firstReajusteOffset: number; // Offset para cálculo do reajuste: 0 = aplica em mês 12, 1 = aplica em mês 13
 }
 
 export interface GoalSeekParams {
@@ -20,6 +23,7 @@ export interface GoalSeekParams {
   prazoFinanciamento: number;      // Prazo do financiamento em meses
   valorLiquidoFinalVenda: number;  // Valor líquido final da alienação
   reajusteAnual: number;           // Reajuste anual do aluguel (ex: 0.04 = 4%)
+  valorCompraTotal: number;        // Valor total de compra do veículo do usuário (caminhão + implemento)
 }
 
 export interface CashFlowDisplayEntry {
@@ -216,7 +220,17 @@ export async function readTemplateCashFlowData(zip: JSZip): Promise<TemplateData
   const rentasCache = cols.map(c => lerCelulaXml(xml, `${c}28`));   // aluguel mensal
   const financCache = cols.map(c => lerCelulaXml(xml, `${c}11`));   // financiamento mensal
   const naoOperCache = cols.map(c => lerCelulaXml(xml, `${c}60`));  // não operacional (venda do ativo)
+  const custosCache = cols.map(c => lerCelulaXml(xml, `${c}13`));   // custos operacionais (IPVA, seg, manut)
   const precoCache = lerCelulaXml(xml, 'H66') || 1;                 // preço do template
+
+  // Ler valor total do veículo do template (Dados C29 + C30)
+  const abaDados = await resolverAbaNoZip(zip, 'Dados');
+  let templateVehicleValue = 297000; // fallback padrão
+  if (abaDados) {
+    const c29 = lerCelulaXml(abaDados.xml, 'C29');
+    const c30 = lerCelulaXml(abaDados.xml, 'C30');
+    templateVehicleValue = c29 + c30;
+  }
 
   // Determinar nMeses (range do VPL do Excel)
   // O VPL no Excel vai de H63 até a coluna da venda do ativo (naoOper > threshold).
@@ -243,7 +257,29 @@ export async function readTemplateCashFlowData(zip: JSZip): Promise<TemplateData
   }
   const nMeses = ultimoMes + 1;
 
-  return { flowsCache, rentasCache, financCache, naoOperCache, precoCache, nMeses };
+  // Detectar offset do reajuste: em qual mês de operação o template começa a aplicar reajuste?
+  // Template 12m: aplica em mês 12 de operação → offset = 0 (floor com -firstRentMonth)
+  // Templates 24m+: aplicam em mês 13 de operação → offset = 1
+  // Detectado automaticamente lendo o template.
+  let firstRentMonth = -1;
+  let baseRenta = 0;
+  let firstReajusteOffset = 1; // default: reajuste a partir do mês 13 (como 24m/36m)
+  for (let t = 0; t < cols.length; t++) {
+    if (rentasCache[t] > 0 && firstRentMonth === -1) {
+      firstRentMonth = t;
+      baseRenta = rentasCache[t];
+    }
+    if (firstRentMonth >= 0 && rentasCache[t] > baseRenta * 1.005) {
+      // Encontrou o primeiro mês com reajuste
+      const mesOp = t - firstRentMonth + 1; // mês de operação (começa em 1)
+      // Se o reajuste inicia no mês 12 de operação (ex: template 12m), precisamos de offset = 1.
+      // Se inicia no mês 13 de operação (ex: templates 24m, 36m), precisamos de offset = 0.
+      firstReajusteOffset = mesOp % 12 === 0 ? 1 : 0;
+      break;
+    }
+  }
+
+  return { flowsCache, rentasCache, financCache, naoOperCache, custosCache, precoCache, templateVehicleValue, nMeses, firstReajusteOffset };
 }
 
 // ─── Goal Seek ──────────────────────────────────────────────────────────────
@@ -269,9 +305,38 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
     prazoFinanciamento,
     valorLiquidoFinalVenda,
     reajusteAnual,
+    valorCompraTotal,
   } = params;
 
-  const { flowsCache, rentasCache, financCache, naoOperCache, precoCache, nMeses } = templateData;
+  const { flowsCache, rentasCache, financCache, naoOperCache, custosCache, precoCache, templateVehicleValue, nMeses, firstReajusteOffset } = templateData;
+
+  // ── Calcular diferença de custos IPVA/Licenciamento (escalam com valor do veículo) ──
+  // Fórmula do Licenciamento no template Excel:
+  //   Ano 1: (veículo × 0.015 × 0.97) + 600
+  //   Ano 2: (veículo × 0.015 × 0.97) + 150
+  //   Ano N≥3: (veículo × 0.85^(N-2) × 0.015 × 0.97) + 150
+  // Os custos aparecem em meses específicos (aniversários anuais do contrato).
+  // Aqui calculamos a DIFERENÇA entre custo do usuário e custo do template para cada mês.
+  const custosDiff: Record<number, number> = {};
+  if (valorCompraTotal > 0 && templateVehicleValue > 0 && Math.abs(valorCompraTotal - templateVehicleValue) > 1) {
+    for (let t = 0; t < nMeses; t++) {
+      const custoTemplate = custosCache[t];
+      if (custoTemplate > 100) { // meses com custo significativo (IPVA/licenciamento)
+        // Recalcular o custo para o veículo do usuário
+        // Extrair a componente fixa (doc) e a componente variável (IPVA)
+        const ipvaTemplate = custoTemplate - (t < 3 ? 600 : 150); // Ano 1 = doc 600, demais = 150
+        if (ipvaTemplate > 0) {
+          // Fator IPVA = (valorVeiculo × 0.015 × 0.97)
+          // O IPVA do template e do usuário seguem a mesma degradação FIPE (0.85^n)
+          // Então: ipvaUsuario / ipvaTemplate = valorCompraTotal / templateVehicleValue
+          const ipvaUsuario = ipvaTemplate * (valorCompraTotal / templateVehicleValue);
+          const docFixo = custoTemplate - ipvaTemplate; // componente fixa (600 ou 150)
+          const custoUsuario = ipvaUsuario + docFixo;
+          custosDiff[t] = custoUsuario - custoTemplate;
+        }
+      }
+    }
+  }
 
   // Calcular TMA mensal
   const tmaMensal = Math.pow(1 + tmaAnual, 1 / 12) - 1;
@@ -307,12 +372,17 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
 
     // Calcular o multiplicador de reajuste para este mês:
     // Usa reajusteAnual do SISTEMA, composto anualmente a partir do firstRentMonth.
-    // Ano 0 (meses 0-11 de renda): ratio = 1.0
-    // Ano 1 (meses 12-23): ratio = (1 + reajuste)
-    // Ano 2 (meses 24-35): ratio = (1 + reajuste)²
+    // O offset é detectado do template:
+    //   offset=0: reajuste aplica em mês 12 de operação (inclusive) — template 12m
+    //   offset=1: reajuste aplica em mês 13 de operação (inclusive) — templates 24m+
+    // Ano 0 (meses sem reajuste): ratio = 1.0
+    // Ano 1 (após 1 ano completo): ratio = (1 + reajuste)
     const ratio = (renta > 0 && firstRentMonth >= 0)
-      ? Math.pow(1 + reajusteAnual, Math.floor((t - firstRentMonth) / 12))
+      ? Math.pow(1 + reajusteAnual, Math.floor((t - firstRentMonth + firstReajusteOffset) / 12))
       : 0;
+
+    // Ajuste de custos IPVA/Licenciamento para o veículo do usuário
+    const custoExtra = custosDiff[t] || 0;
 
     if (naoOper > VENDA_THRESHOLD) {
       // ── Mês com VENDA do ativo (detectado via Row 60 Não Operacional) ──
@@ -320,20 +390,20 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
       if (renta > 0) {
         // Mês com venda E aluguel
         coefP += ratio * netFator * df;
-        constVPL += (flowSemVenda + financMes - nossaFinanc - renta * netFator) * df;
+        constVPL += (flowSemVenda + financMes - nossaFinanc - renta * netFator - custoExtra) * df;
       } else {
         // Mês com venda SEM aluguel
-        constVPL += (flowSemVenda + financMes - nossaFinanc) * df;
+        constVPL += (flowSemVenda + financMes - nossaFinanc - custoExtra) * df;
       }
       // Adicionar o valor de venda do USUÁRIO
       constVPL += valorLiquidoFinalVenda * df;
     } else if (renta > 0) {
       // ── Mês COM aluguel (sem venda) ──
       coefP += ratio * netFator * df;
-      constVPL += (flow + financMes - nossaFinanc - renta * netFator) * df;
+      constVPL += (flow + financMes - nossaFinanc - renta * netFator - custoExtra) * df;
     } else {
       // ── Mês SEM aluguel e SEM venda ──
-      constVPL += (flow + financMes - nossaFinanc) * df;
+      constVPL += (flow + financMes - nossaFinanc - custoExtra) * df;
     }
   }
 
@@ -353,10 +423,11 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
     const financMes = financCache[t];
     const naoOper = naoOperCache[t];
     const nossaFinanc = (t >= 1 && t <= prazoFinanciamento) ? parcelaMensal : 0;
+    const custoExtra = custosDiff[t] || 0;
 
-    // Reajuste anual do sistema para este mês
+    // Reajuste anual do sistema para este mês (mesmo offset detectado do template)
     const ratio = (renta > 0 && firstRentMonth >= 0)
-      ? Math.pow(1 + reajusteAnual, Math.floor((t - firstRentMonth) / 12))
+      ? Math.pow(1 + reajusteAnual, Math.floor((t - firstRentMonth + firstReajusteOffset) / 12))
       : 0;
 
     let fluxoLiquido: number;
@@ -370,10 +441,10 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
         aluguelBruto = precoMensalAluguel * ratio;
         const aluguelLiquido = aluguelBruto * netFator;
         const custosExtras = renta * netFator - financMes - flowSemVenda;
-        custos = -(nossaFinanc + custosExtras);
+        custos = -(nossaFinanc + custosExtras + custoExtra);
         fluxoLiquido = aluguelLiquido + custos + valorLiquidoFinalVenda;
       } else {
-        custos = flowSemVenda + financMes - nossaFinanc;
+        custos = flowSemVenda + financMes - nossaFinanc - custoExtra;
         fluxoLiquido = custos + valorLiquidoFinalVenda;
       }
     } else if (renta > 0) {
@@ -381,12 +452,12 @@ export function goalSeekFromTemplate(params: GoalSeekParams): GoalSeekResult {
       aluguelBruto = precoMensalAluguel * ratio;
       const aluguelLiquido = aluguelBruto * netFator;
       const custosExtras = renta * netFator - financMes - flow;
-      custos = -(nossaFinanc + custosExtras);
+      custos = -(nossaFinanc + custosExtras + custoExtra);
       fluxoLiquido = aluguelLiquido + custos;
     } else {
       // ── Mês SEM aluguel ──
       aluguelBruto = 0;
-      custos = flow + financMes - nossaFinanc;
+      custos = flow + financMes - nossaFinanc - custoExtra;
       fluxoLiquido = custos;
     }
 

@@ -16,6 +16,7 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
+import { InputNumber } from '../../components/ui/InputNumber';
 import { Select } from '../../components/ui/Select';
 import type { OptionType } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
@@ -40,6 +41,10 @@ interface Projeto {
   descricao: string | null;
   vendedor_id: string | null;
   status: 'Em andamento' | 'Aprovado' | 'Reprovado';
+  forma_pagamento_dias: number | null;
+  validade_proposta_dias: number | null;
+  indice_reajuste: string | null;
+  multa_rescisao_antecipada_percentual: number | null;
   criado_em: string;
   atualizado_em: string;
   vendedor: Vendedor | null;
@@ -94,6 +99,10 @@ export function ProjetoDetalhesPage() {
   const [formNome, setFormNome] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
   const [formVendedor, setFormVendedor] = useState<OptionType | null>(null);
+  const [formFormaPagamentoDias, setFormFormaPagamentoDias] = useState<number | string>(30);
+  const [formValidadePropostaDias, setFormValidadePropostaDias] = useState<number | string>(10);
+  const [formIndiceReajuste, setFormIndiceReajuste] = useState('IPCA / IGP-M');
+  const [formMultaRescisao, setFormMultaRescisao] = useState<number | string>(15);
   const [vendedorOptions, setVendedorOptions] = useState<OptionType[]>([]);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -128,6 +137,14 @@ export function ProjetoDetalhesPage() {
     } else {
       setFormVendedor(null);
     }
+    setFormFormaPagamentoDias(projeto.forma_pagamento_dias ?? 30);
+    setFormValidadePropostaDias(projeto.validade_proposta_dias ?? 10);
+    setFormIndiceReajuste(projeto.indice_reajuste || 'IPCA / IGP-M');
+    setFormMultaRescisao(
+      projeto.multa_rescisao_antecipada_percentual != null
+        ? projeto.multa_rescisao_antecipada_percentual * 100
+        : 15
+    );
     setEditModalOpen(true);
   };
 
@@ -142,6 +159,10 @@ export function ProjetoDetalhesPage() {
           nome: formNome,
           vendedor_id: formVendedor ? String(formVendedor.value) : null,
           descricao: formDescricao || null,
+          forma_pagamento_dias: Number(formFormaPagamentoDias) || 30,
+          validade_proposta_dias: Number(formValidadePropostaDias) || 10,
+          indice_reajuste: formIndiceReajuste.trim() || 'IPCA / IGP-M',
+          multa_rescisao_antecipada_percentual: (Number(formMultaRescisao) || 15) / 100,
           atualizado_em: new Date().toISOString()
         })
         .eq('id', projeto.id);
@@ -299,19 +320,19 @@ export function ProjetoDetalhesPage() {
           versao: novaVersaoNum,
           ativo: true,
           criado_por: user?.id || null,
-          // Taxas globais
-          comissao_venda_percentual: cotOriginal.comissao_venda_percentual,
-          imposto_venda_ir_percentual: cotOriginal.imposto_venda_ir_percentual,
-          imposto_venda_adicional_ir_percentual: cotOriginal.imposto_venda_adicional_ir_percentual,
-          imposto_venda_csll_percentual: cotOriginal.imposto_venda_csll_percentual,
-          depreciacao_contabil_percentual: cotOriginal.depreciacao_contabil_percentual,
-          documentacao_valor: cotOriginal.documentacao_valor,
-          ipva_desconto_vista_percentual: cotOriginal.ipva_desconto_vista_percentual,
-          ipva_depreciacao_percentual: cotOriginal.ipva_depreciacao_percentual,
-          reajuste_aluguel_anual_percentual: cotOriginal.reajuste_aluguel_anual_percentual,
-          tma_anual_percentual: cotOriginal.tma_anual_percentual,
-          meses_antes_aluguel: cotOriginal.meses_antes_aluguel,
-          meses_depois_aluguel: cotOriginal.meses_depois_aluguel
+          // Taxas globais com fallback para o padrão
+          comissao_venda_percentual: cotOriginal.comissao_venda_percentual ?? 5.8,
+          imposto_venda_ir_percentual: cotOriginal.imposto_venda_ir_percentual ?? 0.15,
+          imposto_venda_adicional_ir_percentual: cotOriginal.imposto_venda_adicional_ir_percentual ?? 0.10,
+          imposto_venda_csll_percentual: (cotOriginal.imposto_venda_csll_percentual != null && cotOriginal.imposto_venda_csll_percentual >= 0.005) ? cotOriginal.imposto_venda_csll_percentual : 0.03,
+          depreciacao_contabil_percentual: cotOriginal.depreciacao_contabil_percentual ?? 0.20,
+          documentacao_valor: cotOriginal.documentacao_valor ?? 1000,
+          ipva_desconto_vista_percentual: cotOriginal.ipva_desconto_vista_percentual ?? 0.03,
+          ipva_depreciacao_percentual: cotOriginal.ipva_depreciacao_percentual ?? 0.15,
+          reajuste_aluguel_anual_percentual: cotOriginal.reajuste_aluguel_anual_percentual ?? 0.04,
+          tma_anual_percentual: cotOriginal.tma_anual_percentual ?? 0.30,
+          meses_antes_aluguel: cotOriginal.meses_antes_aluguel ?? 0,
+          meses_depois_aluguel: cotOriginal.meses_depois_aluguel ?? 3
         })
         .select('id')
         .single();
@@ -567,6 +588,34 @@ export function ProjetoDetalhesPage() {
               </p>
             </div>
 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '4px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--color-grey-400)', fontWeight: 700, textTransform: 'uppercase' }}>Parâmetros Comerciais</span>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--color-grey-450)' }}>Forma de Pagamento</span>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-800)' }}>{projeto.forma_pagamento_dias ?? 30} dias</span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--color-grey-450)' }}>Validade Proposta</span>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-800)' }}>{projeto.validade_proposta_dias ?? 10} dias</span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--color-grey-450)' }}>Índice Reajuste</span>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-800)' }}>{projeto.indice_reajuste || 'IPCA / IGP-M'}</span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--color-grey-450)' }}>Multa Rescisão</span>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-800)' }}>
+                    {projeto.multa_rescisao_antecipada_percentual != null ? (projeto.multa_rescisao_antecipada_percentual * 100).toFixed(0) : '15'}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid #f1f5f9', paddingTop: '14px', marginTop: '4px' }}>
               <span style={{ fontSize: '11px', color: 'var(--color-grey-400)', fontWeight: 600, textTransform: 'uppercase' }}>Status do Projeto</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -812,8 +861,60 @@ export function ProjetoDetalhesPage() {
                 value={formDescricao}
                 onChange={(e) => setFormDescricao(e.target.value)}
                 disabled={savingEdit}
-                rows={3}
+                rows={2}
               />
+
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '4px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-grey-800)', display: 'block', marginBottom: '8px' }}>
+                  Parâmetros Comerciais da Proposta
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', marginBottom: '4px', display: 'block' }}>
+                      Forma de pagamento (Dias)
+                    </label>
+                    <InputNumber
+                      value={formFormaPagamentoDias}
+                      onChange={(v) => setFormFormaPagamentoDias(v)}
+                      disabled={savingEdit}
+                      min={0}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', marginBottom: '4px', display: 'block' }}>
+                      Validade da proposta (Dias)
+                    </label>
+                    <InputNumber
+                      value={formValidadePropostaDias}
+                      onChange={(v) => setFormValidadePropostaDias(v)}
+                      disabled={savingEdit}
+                      min={0}
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      label="Índice de reajuste"
+                      type="text"
+                      value={formIndiceReajuste}
+                      onChange={(e) => setFormIndiceReajuste(e.target.value)}
+                      disabled={savingEdit}
+                      placeholder="IPCA / IGP-M"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', marginBottom: '4px', display: 'block' }}>
+                      Multa rescisão antecipada (%)
+                    </label>
+                    <InputNumber
+                      value={formMultaRescisao}
+                      onChange={(v) => setFormMultaRescisao(v)}
+                      disabled={savingEdit}
+                      min={0}
+                      max={100}
+                    />
+                  </div>
+                </div>
+              </div>
 
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                 <Button

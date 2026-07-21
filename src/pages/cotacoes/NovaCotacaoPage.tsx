@@ -1,7 +1,12 @@
 // pages/cotacoes/NovaCotacaoPage.tsx — Form de Nova/Editar Cotação TOPE
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ExcelJS from 'exceljs/dist/exceljs.min.js';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import logoTope from '../../assets/logo-tope.png';
+import dibracamLogo from '../../assets/dibracam-logo.png';
+import dibracamConcessionaria from '../../assets/dibracam-concessionaria.jpg';
 import {
   ArrowLeft,
   FloppyDisk,
@@ -19,6 +24,9 @@ import {
   X,
   Calculator,
   DownloadSimple,
+  FileXls,
+  FilePdf,
+  CaretDown,
 } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -82,6 +90,14 @@ export interface ItemLocal {
       preco_aluguel: number;
       vpl: number;
       tir: number;
+      tma_anual?: number | null;
+      juros_mensal?: number | null;
+      parcela_mensal?: number | null;
+      valor_compra_total?: number | null;
+      valor_venda_residual?: number | null;
+      valor_liquido_venda?: number | null;
+      valor_liquido_final_venda?: number | null;
+      cashflow_snapshot?: any[] | null;
     };
   };
 }
@@ -108,6 +124,34 @@ const PRAZO_OPTIONS = [
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+function numeroPorExtenso(n: number): string {
+  if (!n || isNaN(n) || n <= 0) return 'zero';
+  const unidades = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove'];
+  const dezenaEspeciais: { [k: number]: string } = {
+    10: 'dez', 11: 'onze', 12: 'doze', 13: 'treze', 14: 'quatorze', 15: 'quinze',
+    16: 'dezesseis', 17: 'dezessete', 18: 'dezoito', 19: 'dezenove'
+  };
+  const dezenas = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+  const centenas = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+
+  if (n === 100) return 'cem';
+  
+  if (n < 10) return unidades[n];
+  if (n >= 10 && n < 20) return dezenaEspeciais[n];
+  if (n < 100) {
+    const d = Math.floor(n / 10);
+    const u = n % 10;
+    return u > 0 ? `${dezenas[d]} e ${unidades[u]}` : dezenas[d];
+  }
+  if (n < 1000) {
+    const c = Math.floor(n / 100);
+    const resto = n % 100;
+    if (resto === 0) return centenas[c];
+    return `${centenas[c]} e ${numeroPorExtenso(resto)}`;
+  }
+  return String(n);
+}
+
 const maskCNPJ = (val: string) => {
   const digits = val.replace(/\D/g, '').slice(0, 14);
   let masked = digits;
@@ -170,6 +214,21 @@ export function NovaCotacaoPage() {
   const toast = useToast();
   const { user, profile } = useAuth();
 
+  const [menuPropostaAberto, setMenuPropostaAberto] = useState(false);
+  const menuPropostaRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuPropostaRef.current && !menuPropostaRef.current.contains(event.target as Node)) {
+        setMenuPropostaAberto(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   // ── Estados do Formulário principal ─────────────────────────────────────────
   const [formCNPJ, setFormCNPJ] = useState('');
   const [formRazaoSocial, setFormRazaoSocial] = useState('');
@@ -211,6 +270,17 @@ export function NovaCotacaoPage() {
   const [projetoId, setProjetoId] = useState<string | null>(null);
   const [cotacaoVersao, setCotacaoVersao] = useState(1);
   const [projetoCriadoEm, setProjetoCriadoEm] = useState<string | null>(null);
+  const [projetoParametros, setProjetoParametros] = useState<{
+    forma_pagamento_dias: number;
+    validade_proposta_dias: number;
+    indice_reajuste: string;
+    multa_rescisao_antecipada_percentual: number;
+  }>({
+    forma_pagamento_dias: 30,
+    validade_proposta_dias: 10,
+    indice_reajuste: 'IPCA/IBGE',
+    multa_rescisao_antecipada_percentual: 15,
+  });
 
   // ── Taxas & Despesas da cotação (globais) ──────────────────────────────────────
   const [cotComissao, setCotComissao] = useState('');
@@ -326,15 +396,21 @@ export function NovaCotacaoPage() {
         setCotacaoVersao(cot.versao || 1);
         setIsReadOnly(cot.ativo === false);
 
-        // Carregar data de criação do projeto
+        // Carregar data de criação e parâmetros comerciais do projeto
         if (cot.projeto_id) {
           const { data: projData } = await supabase
             .from('projetos')
-            .select('criado_em')
+            .select('criado_em, forma_pagamento_dias, validade_proposta_dias, indice_reajuste, multa_rescisao_antecipada_percentual')
             .eq('id', cot.projeto_id)
-            .single();
-          if (projData?.criado_em) {
-            setProjetoCriadoEm(projData.criado_em);
+            .maybeSingle();
+          if (projData) {
+            if (projData.criado_em) setProjetoCriadoEm(projData.criado_em);
+            setProjetoParametros({
+              forma_pagamento_dias: projData.forma_pagamento_dias ?? 30,
+              validade_proposta_dias: projData.validade_proposta_dias ?? 10,
+              indice_reajuste: projData.indice_reajuste || 'IPCA/IBGE',
+              multa_rescisao_antecipada_percentual: projData.multa_rescisao_antecipada_percentual ?? 15,
+            });
           }
         }
 
@@ -352,19 +428,32 @@ export function NovaCotacaoPage() {
           setVendedor({ value: cot.vendedor.id, label: cot.vendedor.nome_completo });
         }
 
-        // Carregar taxas da cotação salvas
-        setCotComissao(cot.comissao_venda_percentual != null ? String(cot.comissao_venda_percentual) : '');
-        setCotIr(cot.imposto_venda_ir_percentual != null ? String(+(cot.imposto_venda_ir_percentual * 100).toFixed(4)) : '');
-        setCotAdicionalIr(cot.imposto_venda_adicional_ir_percentual != null ? String(+(cot.imposto_venda_adicional_ir_percentual * 100).toFixed(4)) : '');
-        setCotCsll(cot.imposto_venda_csll_percentual != null ? String(+(cot.imposto_venda_csll_percentual * 100).toFixed(4)) : '');
-        setCotDepreciacaoContabil(cot.depreciacao_contabil_percentual != null ? String(+(cot.depreciacao_contabil_percentual * 100).toFixed(4)) : '');
-        setCotDocumentacao(cot.documentacao_valor != null ? String(cot.documentacao_valor) : '');
-        setCotIpvaDesconto(cot.ipva_desconto_vista_percentual != null ? String(+(cot.ipva_desconto_vista_percentual * 100).toFixed(4)) : '');
-        setCotIpvaDepreciacao(cot.ipva_depreciacao_percentual != null ? String(+(cot.ipva_depreciacao_percentual * 100).toFixed(4)) : '');
-        setCotReajusteAluguel(cot.reajuste_aluguel_anual_percentual != null ? String(+(cot.reajuste_aluguel_anual_percentual * 100).toFixed(4)) : '');
-        setCotTmaAnual(cot.tma_anual_percentual != null ? String(+(cot.tma_anual_percentual * 100).toFixed(4)) : '');
-        setCotMesesAntesAluguel(cot.meses_antes_aluguel != null ? String(cot.meses_antes_aluguel) : '');
-        setCotMesesDepoisAluguel(cot.meses_depois_aluguel != null ? String(cot.meses_depois_aluguel) : '');
+        // Carregar taxas da cotação salvas (com fallbacks para os padrões do sistema)
+        const comissaoVal = cot.comissao_venda_percentual ?? 5.8;
+        const irVal = cot.imposto_venda_ir_percentual ?? 0.15;
+        const adicionalIrVal = cot.imposto_venda_adicional_ir_percentual ?? 0.10;
+        const csllVal = (cot.imposto_venda_csll_percentual != null && cot.imposto_venda_csll_percentual >= 0.005) ? cot.imposto_venda_csll_percentual : 0.03;
+        const depContabilVal = cot.depreciacao_contabil_percentual ?? 0.20;
+        const docVal = cot.documentacao_valor ?? 1000;
+        const ipvaDescVal = cot.ipva_desconto_vista_percentual ?? 0.03;
+        const ipvaDepVal = cot.ipva_depreciacao_percentual ?? 0.15;
+        const reajusteVal = cot.reajuste_aluguel_anual_percentual ?? 0.04;
+        const tmaVal = cot.tma_anual_percentual ?? 0.30;
+        const mAntesVal = cot.meses_antes_aluguel ?? 0;
+        const mDepoisVal = cot.meses_depois_aluguel ?? 3;
+
+        setCotComissao(String(comissaoVal));
+        setCotIr(String(+(irVal * 100).toFixed(4)));
+        setCotAdicionalIr(String(+(adicionalIrVal * 100).toFixed(4)));
+        setCotCsll(String(+(csllVal * 100).toFixed(4)));
+        setCotDepreciacaoContabil(String(+(depContabilVal * 100).toFixed(4)));
+        setCotDocumentacao(String(docVal));
+        setCotIpvaDesconto(String(+(ipvaDescVal * 100).toFixed(4)));
+        setCotIpvaDepreciacao(String(+(ipvaDepVal * 100).toFixed(4)));
+        setCotReajusteAluguel(String(+(reajusteVal * 100).toFixed(4)));
+        setCotTmaAnual(String(+(tmaVal * 100).toFixed(4)));
+        setCotMesesAntesAluguel(String(mAntesVal));
+        setCotMesesDepoisAluguel(String(mDepoisVal));
 
         // Carregar Anexos
         const { data: anxs } = await supabase
@@ -405,6 +494,14 @@ export function NovaCotacaoPage() {
                   preco_aluguel: Number(v.preco_aluguel) || 0,
                   vpl: Number(v.vpl) || 0,
                   tir: Number(v.tir) || 0,
+                  tma_anual: v.tma_anual != null ? Number(v.tma_anual) : null,
+                  juros_mensal: v.juros_mensal != null ? Number(v.juros_mensal) : null,
+                  parcela_mensal: v.parcela_mensal != null ? Number(v.parcela_mensal) : null,
+                  valor_compra_total: v.valor_compra_total != null ? Number(v.valor_compra_total) : null,
+                  valor_venda_residual: v.valor_venda_residual != null ? Number(v.valor_venda_residual) : null,
+                  valor_liquido_venda: v.valor_liquido_venda != null ? Number(v.valor_liquido_venda) : null,
+                  valor_liquido_final_venda: v.valor_liquido_final_venda != null ? Number(v.valor_liquido_final_venda) : null,
+                  cashflow_snapshot: Array.isArray(v.cashflow_snapshot) ? v.cashflow_snapshot : null,
                 };
               });
 
@@ -616,9 +713,9 @@ export function NovaCotacaoPage() {
       const rowHeaderModelo = sheet.getRow(16);
       const rowDadosModelo = sheet.getRow(17);
 
-      // Guardar Condições Gerais (linhas 26 a 35)
+      // Guardar Condições Gerais (linhas 25 a 35)
       const condicoesGerais: Array<{ values: any[]; height: number; styles: any[] }> = [];
-      for (let r = 26; r <= 35; r++) {
+      for (let r = 25; r <= 35; r++) {
         const row = sheet.getRow(r);
         const rowValues = [];
         const rowStyles = [];
@@ -823,9 +920,51 @@ export function NovaCotacaoPage() {
         currentRowNum++;
       }
 
-      // 7. Inserir Condições Gerais no final
+      // 7. Inserir Condições Gerais no final com os parâmetros comerciais do projeto
+      let fpDias = projetoParametros.forma_pagamento_dias ?? 30;
+      let vpDias = projetoParametros.validade_proposta_dias ?? 10;
+      let indReaj = projetoParametros.indice_reajuste || 'IPCA/IBGE';
+      let multRes = projetoParametros.multa_rescisao_antecipada_percentual ?? 15;
+
+      if (projetoId) {
+        const { data: latestProj } = await supabase
+          .from('projetos')
+          .select('forma_pagamento_dias, validade_proposta_dias, indice_reajuste, multa_rescisao_antecipada_percentual')
+          .eq('id', projetoId)
+          .maybeSingle();
+
+        if (latestProj) {
+          if (latestProj.forma_pagamento_dias != null) fpDias = latestProj.forma_pagamento_dias;
+          if (latestProj.validade_proposta_dias != null) vpDias = latestProj.validade_proposta_dias;
+          if (latestProj.indice_reajuste) indReaj = latestProj.indice_reajuste;
+          if (latestProj.multa_rescisao_antecipada_percentual != null) multRes = latestProj.multa_rescisao_antecipada_percentual;
+        }
+      }
+
+      const formaPagExtenso = numeroPorExtenso(fpDias);
+      const textoFormaPagamento = `FORMA DE PAGAMENTO LOCAÇÃO: ${fpDias} (${formaPagExtenso}) dias do envio da fatura`;
+      const textoValidadeProposta = `VALIDADE DA PROPOSTA: ${vpDias} DIAS`;
+      const textoIndiceReajuste = `Índice de Reajuste Locação e Gestão de Operação: ${indReaj} – aplicável a cada 12 (doze) meses`;
+
+      const multValor = multRes <= 1 ? Math.round(multRes * 100) : Math.round(multRes);
+      const textoMultaRescisao = `Rescisão antecipada: devolução do bem e incidência de multa de ${multValor}% sobre as parcelas vincendas`;
+
       condicoesGerais.forEach(cg => {
-        const row = sheet.insertRow(currentRowNum, cg.values);
+        const rowValues = [...cg.values];
+        const valStr = String(rowValues[0] || '');
+        const valUpper = valStr.toUpperCase();
+
+        if (valUpper.includes('FORMA DE PAGAMENTO')) {
+          rowValues[0] = textoFormaPagamento;
+        } else if (valUpper.includes('VALIDADE DA PROPOSTA')) {
+          rowValues[0] = textoValidadeProposta;
+        } else if (valUpper.includes('INDICE DE REAJUSTE') || valUpper.includes('ÍNDICE DE REAJUSTE')) {
+          rowValues[0] = textoIndiceReajuste;
+        } else if (valUpper.includes('RESCISÃO ANTECIPADA') || valUpper.includes('RESCISAO ANTECIPADA')) {
+          rowValues[0] = textoMultaRescisao;
+        }
+
+        const row = sheet.insertRow(currentRowNum, rowValues);
         row.height = cg.height;
         for (let c = 1; c <= 11; c++) {
           const cell = row.getCell(c);
@@ -874,6 +1013,332 @@ export function NovaCotacaoPage() {
     } catch (err) {
       console.error('Erro ao gerar proposta comercial:', err);
       toast.error(err instanceof Error ? err.message : 'Erro ao gerar proposta.');
+    } finally {
+      setGerandoProposta(false);
+    }
+  };
+
+  // ── Gerar Proposta Comercial em PDF ──────────────────────────────────────────
+  const handleGerarPropostaPDF = async () => {
+    try {
+      setGerandoProposta(true);
+
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+
+      // 1. Tentar adicionar logo TOPE
+      try {
+        const img = new Image();
+        img.src = logoTope;
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+        });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || 200;
+        canvas.height = img.naturalHeight || 80;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const imgData = canvas.toDataURL('image/png');
+          doc.addImage(imgData, 'PNG', margin, 10, 42, 14);
+        }
+      } catch (e) {
+        console.warn('Não foi possível carregar a logo para o PDF:', e);
+      }
+
+      // 2. Cabeçalho da Proposta
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(249, 115, 22); // Laranja TOPE (#F97316)
+      doc.text('PROPOSTA COMERCIAL - LOCAÇÃO DE EQUIPAMENTOS', margin, 32);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`Cliente: ${(formRazaoSocial || 'Cliente').toUpperCase()}`, margin, 38);
+
+      const dataAtualFormatada = new Date().toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Data: ${dataAtualFormatada}`, margin, 43);
+
+      let currentY = 49;
+
+      // 3. Buscar parâmetros comerciais do projeto
+      let fpDias = projetoParametros.forma_pagamento_dias ?? 30;
+      let vpDias = projetoParametros.validade_proposta_dias ?? 10;
+      let indReaj = projetoParametros.indice_reajuste || 'IPCA/IBGE';
+      let multRes = projetoParametros.multa_rescisao_antecipada_percentual ?? 15;
+
+      if (projetoId) {
+        const { data: latestProj } = await supabase
+          .from('projetos')
+          .select('forma_pagamento_dias, validade_proposta_dias, indice_reajuste, multa_rescisao_antecipada_percentual')
+          .eq('id', projetoId)
+          .maybeSingle();
+
+        if (latestProj) {
+          if (latestProj.forma_pagamento_dias != null) fpDias = latestProj.forma_pagamento_dias;
+          if (latestProj.validade_proposta_dias != null) vpDias = latestProj.validade_proposta_dias;
+          if (latestProj.indice_reajuste) indReaj = latestProj.indice_reajuste;
+          if (latestProj.multa_rescisao_antecipada_percentual != null) multRes = latestProj.multa_rescisao_antecipada_percentual;
+        }
+      }
+
+      // 4. Montar tabelas para cada item da cotação
+      for (const item of itens) {
+        let descricaoItem = '';
+        if (item.caminhao) {
+          const marcaModelo = item.caminhao.caminhao_familia 
+            ? `${item.caminhao.caminhao_familia} - ${item.caminhao.caminhao_modelo}` 
+            : item.caminhao.caminhao_modelo;
+          const entreEixo = item.caminhao.caminhao_entre_eixo 
+            ? ` (entre-eixo: ${item.caminhao.caminhao_entre_eixo})` 
+            : '';
+          descricaoItem = `${marcaModelo}${entreEixo}`;
+        } else {
+          descricaoItem = item.descricao || 'VEÍCULO';
+        }
+
+        if (item.implementos && item.implementos.length > 0) {
+          const implsStr = item.implementos.map(impl => {
+            const attrs = impl.atributos.map(a => a.atributo_nome).filter(Boolean).join(', ');
+            return `${impl.categoria_nome}${attrs ? ` [${attrs}]` : ''}`;
+          }).join(' + ');
+          
+          descricaoItem = `${descricaoItem} EQUIPADO COM ${implsStr}`;
+        }
+
+        const textoFinal = `${descricaoItem.toUpperCase()} (${item.quantidade} UNIDADE${item.quantidade > 1 ? 'S' : ''})`;
+
+        const prazosOrdenados = [...prazos].sort((a, b) => b - a);
+
+        const tableRows = prazosOrdenados.map((prazo, idx) => {
+          const isPrimeira = idx === 0;
+          const calcVal = item.valoresCalculados?.[prazo];
+          const precoAluguel = calcVal?.preco_aluguel || 0;
+          const pisCofins = precoAluguel * 0.0925;
+          const irCsll = precoAluguel * 0.34;
+          const valorLiquido = precoAluguel - pisCofins - irCsll;
+
+          const formatMoeda = (val: number) =>
+            val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          return [
+            isPrimeira ? 'SIM' : '',
+            isPrimeira ? 'LOCATÁRIA' : '',
+            isPrimeira ? (estimativaRodagem ? `${estimativaRodagem} km` : '') : '',
+            `${prazo} MESES`,
+            formatMoeda(precoAluguel),
+            formatMoeda(pisCofins),
+            formatMoeda(irCsll),
+            formatMoeda(valorLiquido)
+          ];
+        });
+
+        if (currentY + 35 > pageHeight) {
+          doc.addPage();
+          currentY = 20;
+        }
+
+        doc.setFillColor(252, 228, 214);
+        doc.rect(margin, currentY, pageWidth - (margin * 2), 9, 'F');
+        doc.setDrawColor(249, 115, 22);
+        doc.rect(margin, currentY, pageWidth - (margin * 2), 9, 'S');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(180, 83, 9);
+        
+        const splitText = doc.splitTextToSize(textoFinal, pageWidth - (margin * 2) - 4);
+        doc.text(splitText, margin + 2, currentY + 5.5);
+
+        currentY += 10;
+
+        autoTable(doc, {
+          startY: currentY,
+          margin: { left: margin, right: margin },
+          head: [[
+            'Emplacamento',
+            'Manutenção',
+            'Limite Rodagem',
+            'Prazo Contrato',
+            'Valor Mensal Locação',
+            'Crédito PIS/COFINS (9,25%)',
+            'Dedução IRPJ/CSLL (34%)',
+            'Valor Líquido'
+          ]],
+          body: tableRows,
+          theme: 'grid',
+          headStyles: {
+            fillColor: [248, 250, 252],
+            textColor: [51, 65, 85],
+            fontSize: 7.5,
+            fontStyle: 'bold',
+            halign: 'center',
+            lineWidth: 0.1,
+            lineColor: [226, 232, 240]
+          },
+          bodyStyles: {
+            fontSize: 7.5,
+            textColor: [30, 41, 59],
+            halign: 'center',
+            lineWidth: 0.1,
+            lineColor: [226, 232, 240]
+          },
+          columnStyles: {
+            0: { cellWidth: 20 },
+            1: { cellWidth: 22 },
+            2: { cellWidth: 22 },
+            3: { cellWidth: 22, fontStyle: 'bold', fillColor: [254, 243, 199] },
+            4: { cellWidth: 24, fontStyle: 'bold', fillColor: [254, 243, 199] },
+            5: { cellWidth: 24, fillColor: [254, 243, 199] },
+            6: { cellWidth: 24, fillColor: [254, 243, 199] },
+            7: { cellWidth: 24, fontStyle: 'bold', fillColor: [254, 243, 199] }
+          }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 8;
+      }
+
+      // 5. Bloco de Condições Gerais da Proposta
+      if (currentY + 50 > pageHeight) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      const formaPagExtenso = numeroPorExtenso(fpDias);
+      const multValor = multRes <= 1 ? Math.round(multRes * 100) : Math.round(multRes);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(249, 115, 22);
+      doc.text('CONDIÇÕES GERAIS DA PROPOSTA', margin, currentY);
+
+      currentY += 6;
+
+      const condicoesTextos = [
+        'IPVA E DOCUMENTAÇÃO INCLUSOS',
+        'IMPOSTOS INCLUSOS',
+        `FORMA DE PAGAMENTO LOCAÇÃO: ${fpDias} (${formaPagExtenso}) dias do envio da fatura`,
+        'LOCAL DE RETIRADA GRANDE/SP',
+        `VALIDADE DA PROPOSTA: ${vpDias} DIAS`,
+        'DISPONIBILIDADE: CHASSIS DE IMEDIATO / PENDENTE IMPLEMENTAÇÃO',
+        `Índice de Reajuste Locação e Gestão de Operação: ${indReaj} – aplicável a cada 12 (doze) meses`,
+        `Rescisão antecipada: devolução do bem e incidência de multa de ${multValor}% sobre as parcelas vincendas`,
+        '*Ilustração de Dedução POSSIVELMENTE aplicáveis a despesa de locação para empresas enquadradas no Regime de Lucro Real - valide com sua área contábil/fiscal'
+      ];
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(51, 65, 85);
+
+      condicoesTextos.forEach(txt => {
+        const isDestaque = txt.startsWith('FORMA DE PAGAMENTO') || txt.startsWith('VALIDADE DA PROPOSTA');
+        if (isDestaque) doc.setFont('helvetica', 'bold');
+        else doc.setFont('helvetica', 'normal');
+
+        const splitCond = doc.splitTextToSize(txt, pageWidth - (margin * 2));
+        doc.text(splitCond, margin, currentY);
+        currentY += (splitCond.length * 4) + 1;
+      });
+
+      // 6. Bloco de Imagens do Rodapé (Logo Dibracam + Foto Concessionária Dibracam + Linha Azul)
+      if (currentY + 55 > pageHeight) {
+        doc.addPage();
+        currentY = 20;
+      } else {
+        currentY += 6;
+      }
+
+      // Adicionar Logo Dibracam
+      try {
+        const logoImg = new Image();
+        logoImg.src = dibracamLogo;
+        await new Promise((resolve) => {
+          logoImg.onload = resolve;
+          logoImg.onerror = resolve;
+        });
+
+        const canvasL = document.createElement('canvas');
+        canvasL.width = logoImg.naturalWidth || 300;
+        canvasL.height = logoImg.naturalHeight || 90;
+        const ctxL = canvasL.getContext('2d');
+        if (ctxL) {
+          ctxL.drawImage(logoImg, 0, 0);
+          const logoData = canvasL.toDataURL('image/png');
+          const lWidth = 50;
+          const lHeight = 13;
+          const lX = (pageWidth - lWidth) / 2;
+          doc.addImage(logoData, 'PNG', lX, currentY, lWidth, lHeight);
+          currentY += lHeight + 4;
+        }
+      } catch (e) {
+        console.warn('Não foi possível carregar a logo Dibracam para o PDF:', e);
+      }
+
+      // Adicionar Foto da Concessionária Dibracam
+      try {
+        const photoImg = new Image();
+        photoImg.src = dibracamConcessionaria;
+        await new Promise((resolve) => {
+          photoImg.onload = resolve;
+          photoImg.onerror = resolve;
+        });
+
+        const canvasP = document.createElement('canvas');
+        canvasP.width = photoImg.naturalWidth || 600;
+        canvasP.height = photoImg.naturalHeight || 200;
+        const ctxP = canvasP.getContext('2d');
+        if (ctxP) {
+          ctxP.drawImage(photoImg, 0, 0);
+          const photoData = canvasP.toDataURL('image/jpeg');
+          const pWidth = 135;
+          const pHeight = 32;
+          const pX = (pageWidth - pWidth) / 2;
+          doc.addImage(photoData, 'JPEG', pX, currentY, pWidth, pHeight);
+          currentY += pHeight + 5;
+        }
+      } catch (e) {
+        console.warn('Não foi possível carregar a foto da Dibracam para o PDF:', e);
+      }
+
+
+
+      // 6. Nome do arquivo e salvar PDF
+      const cleanCliente = (formRazaoSocial || 'COT')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z]/g, '')
+        .toUpperCase();
+      const prefixo = cleanCliente.slice(0, 3).padEnd(3, 'X');
+
+      const dataProjeto = projetoCriadoEm ? new Date(projetoCriadoEm) : new Date();
+      const ano = String(dataProjeto.getFullYear()).slice(-2);
+      const mes = String(dataProjeto.getMonth() + 1).padStart(2, '0');
+      const letraRodada = String.fromCharCode(65 + ((cotacaoVersao || 1) - 1));
+
+      const nomeArquivo = `Proposta_${prefixo}${ano}${mes}-${letraRodada}.pdf`;
+
+      doc.save(nomeArquivo);
+
+      toast.success('Proposta comercial em PDF gerada com sucesso!');
+    } catch (err) {
+      console.error('Erro ao gerar proposta em PDF:', err);
+      toast.error('Erro ao gerar proposta comercial em PDF.');
     } finally {
       setGerandoProposta(false);
     }
@@ -1097,10 +1562,21 @@ export function NovaCotacaoPage() {
                   preco_aluguel: precoAluguel,
                   vpl: vplVal,
                   tir: tirVal,
+                  // Preservar snapshot completo para que o modal possa restaurar sem recalcular
+                  tma_anual: valorSalvo?.tma_anual ?? null,
+                  juros_mensal: valorSalvo?.juros_mensal ?? null,
+                  parcela_mensal: valorSalvo?.parcela_mensal ?? null,
+                  valor_compra_total: valorSalvo?.valor_compra_total ?? null,
+                  valor_venda_residual: valorSalvo?.valor_venda_residual ?? null,
+                  valor_liquido_venda: valorSalvo?.valor_liquido_venda ?? null,
+                  valor_liquido_final_venda: valorSalvo?.valor_liquido_final_venda ?? null,
+                  cashflow_snapshot: valorSalvo?.cashflow_snapshot ?? null,
                   planilha_url: planilhaUrl,
                   planilha_nome: planilhaNome,
                   planilha_path: planilhaPath,
-                  calculado_em: new Date().toISOString(),
+                  calculado_em: valorSalvo?.tma_anual != null
+                    ? (new Date().toISOString()) // snapshot válido → atualizar data
+                    : new Date().toISOString(),
                 });
               }
             }
@@ -1193,6 +1669,14 @@ export function NovaCotacaoPage() {
                     preco_aluguel: Number(v.preco_aluguel) || 0,
                     vpl: Number(v.vpl) || 0,
                     tir: Number(v.tir) || 0,
+                    tma_anual: v.tma_anual != null ? Number(v.tma_anual) : null,
+                    juros_mensal: v.juros_mensal != null ? Number(v.juros_mensal) : null,
+                    parcela_mensal: v.parcela_mensal != null ? Number(v.parcela_mensal) : null,
+                    valor_compra_total: v.valor_compra_total != null ? Number(v.valor_compra_total) : null,
+                    valor_venda_residual: v.valor_venda_residual != null ? Number(v.valor_venda_residual) : null,
+                    valor_liquido_venda: v.valor_liquido_venda != null ? Number(v.valor_liquido_venda) : null,
+                    valor_liquido_final_venda: v.valor_liquido_final_venda != null ? Number(v.valor_liquido_final_venda) : null,
+                    cashflow_snapshot: Array.isArray(v.cashflow_snapshot) ? v.cashflow_snapshot : null,
                   };
                 });
                 
@@ -1332,20 +1816,100 @@ export function NovaCotacaoPage() {
               </div>
             )}
             {isEditMode && (
-              <Button
-                type="button"
-                variant="outline"
-                loading={gerandoProposta}
-                onClick={handleGerarPropostaExcel}
-                style={{
-                  borderColor: 'var(--color-primary)',
-                  color: 'var(--color-primary)',
-                  backgroundColor: 'transparent',
-                }}
-              >
-                <FileArrowDown size={18} style={{ marginRight: '6px' }} />
-                Gerar Proposta
-              </Button>
+              <div style={{ position: 'relative' }} ref={menuPropostaRef}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={gerandoProposta}
+                  onClick={() => setMenuPropostaAberto(prev => !prev)}
+                  style={{
+                    borderColor: 'var(--color-primary)',
+                    color: 'var(--color-primary)',
+                    backgroundColor: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <FileArrowDown size={18} />
+                  <span>{gerandoProposta ? 'Gerando...' : 'Gerar Proposta'}</span>
+                  <CaretDown size={14} style={{ marginLeft: '2px' }} />
+                </Button>
+
+                {menuPropostaAberto && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    right: 0,
+                    backgroundColor: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.05)',
+                    zIndex: 100,
+                    minWidth: '210px',
+                    overflow: 'hidden',
+                    padding: '6px'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuPropostaAberto(false);
+                        handleGerarPropostaExcel();
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        border: 'none',
+                        background: 'none',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        color: 'var(--color-grey-800)',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background-color 0.15s'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      <FileXls size={18} color="#16a34a" />
+                      <span>Exportar em Excel (.xlsx)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuPropostaAberto(false);
+                        handleGerarPropostaPDF();
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        border: 'none',
+                        background: 'none',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        color: 'var(--color-grey-800)',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background-color 0.15s'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      <FilePdf size={18} color="#dc2626" />
+                      <span>Exportar em PDF (.pdf)</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
             <Button type="submit" variant="primary" loading={saving} disabled={isReadOnly}>
               <FloppyDisk size={18} style={{ marginRight: '6px' }} />
@@ -2086,6 +2650,7 @@ export function NovaCotacaoPage() {
         projetoCriadoEm={projetoCriadoEm}
         clienteNome={formRazaoSocial}
         cotacaoVersao={cotacaoVersao}
+        cotacaoId={id}
       />
 
       {/* Modal de Confirmação de Exclusão da Planilha de Validação */}

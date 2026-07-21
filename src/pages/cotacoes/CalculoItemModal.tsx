@@ -61,6 +61,7 @@ interface CalculoItemModalProps {
   projetoCriadoEm?: string | null;
   clienteNome?: string | null;
   cotacaoVersao?: number;
+  cotacaoId?: string | null; // ID atual da cotação (para resolver FK quando item.id fica desatualizado)
 }
 
 export function CalculoItemModal({
@@ -73,6 +74,7 @@ export function CalculoItemModal({
   projetoCriadoEm,
   clienteNome,
   cotacaoVersao,
+  cotacaoId,
 }: CalculoItemModalProps) {
   const toast = useToast();
 
@@ -308,19 +310,32 @@ export function CalculoItemModal({
       implementoTipoUso === (item.implemento_tipo_uso || 'Leve/Moderado')
     ) {
       const calc = item.valoresCalculados?.[prazoSelecionado];
-      if (calc && calc.preco_aluguel > 0) {
+      // Só restaurar snapshots "novos" — que tenham tma_anual salvo.
+      // Snapshots antigos (antes da migration) não possuem tma_anual e podem ter
+      // sido calculados com código bugado. Nesse caso, limpamos para forçar recálculo.
+      if (calc && calc.preco_aluguel > 0 && calc.tma_anual != null) {
+        // Restaurar TMA do snapshot
+        const tmaPct = calc.tma_anual <= 1 ? calc.tma_anual * 100 : calc.tma_anual;
+        setTmaAnualInput(tmaPct.toFixed(2).replace('.', ','));
+
+        // Restaurar taxa de juros do snapshot (se disponível)
+        if (calc.juros_mensal != null && calc.juros_mensal > 0) {
+          setJurosSimulado(calc.juros_mensal);
+        }
+
+        // Restaurar resultado do Goal Seek com cashflow snapshot
         setGoalSeekResult({
           precoMensalAluguel: calc.preco_aluguel,
           vpl: calc.vpl,
           tirMensal: calc.tir,
-          tmaMensal: Math.pow(1 + (Number(tmaAnualInput.replace(',', '.')) / 100), 1/12) - 1,
-          cashFlowDisplay: [],
+          tmaMensal: Math.pow(1 + (calc.tma_anual <= 1 ? calc.tma_anual : calc.tma_anual / 100), 1/12) - 1,
+          cashFlowDisplay: Array.isArray(calc.cashflow_snapshot) ? calc.cashflow_snapshot : [],
         });
         return;
       }
     }
 
-    // Se o usuário alterou algum parâmetro de compra, limpa o cálculo
+    // Parâmetros alterados ou snapshot antigo (sem tma_anual) — limpar resultado para forçar recálculo
     setGoalSeekResult(null);
   }, [
     isOpen,
@@ -330,10 +345,11 @@ export function CalculoItemModal({
     implementoValor,
     caminhaoTipoUso,
     implementoTipoUso,
-    tmaAnualInput,
   ]);
 
+
   // Rodar Goal Seek silenciosamente para preencher dados do fluxo de caixa ao acessar a aba 'cashflow'
+  // Somente se não houver snapshot salvo (cashFlowDisplay.length === 0)
   useEffect(() => {
     if (isOpen && activeTab === 'cashflow' && goalSeekResult && goalSeekResult.cashFlowDisplay.length === 0 && !calculandoAluguel) {
       handleCalcularAluguel(true);
@@ -418,7 +434,11 @@ export function CalculoItemModal({
   // ── Cálculos do Cash Flow (Apuração do Lucro e Tributação) ──
   const taxaDepContabil = taxasCotacao?.depreciacao_contabil_percentual ?? 0.25;
   const depContabilMensal = (valorCompraTotal * taxaDepContabil) / 12;
-  const depContabilAcumulada = Math.min(valorCompraTotal, valorCompraTotal * taxaDepContabil * (mesesTotal / 12));
+  // Depreciação contábil acumulada: usa prazo + mesesDepois (template Excel tem Row21
+  // de J até a coluna da venda, sem incluir o mês de preparação antes do aluguel).
+  // Cap em 48 meses (4 anos = 100% com taxa de 25% a.a.).
+  const mesesDepContabil = Math.min(48, mesesContrato + mesesDepois);
+  const depContabilAcumulada = Math.min(valorCompraTotal, mesesDepContabil * depContabilMensal);
   const valorResidualContabil = Math.max(0, valorCompraTotal - depContabilAcumulada);
 
   const lucroVenda = valorLíquidoVenda - valorResidualContabil;
@@ -480,6 +500,7 @@ export function CalculoItemModal({
         prazoFinanciamento: prazoSelecionado,
         valorLiquidoFinalVenda,
         reajusteAnual: taxasCotacao?.reajuste_aluguel_anual_percentual ?? 0,
+        valorCompraTotal,
       });
 
       setGoalSeekResult(result);
@@ -558,6 +579,7 @@ export function CalculoItemModal({
             prazoFinanciamento: prazoSelecionado,
             valorLiquidoFinalVenda,
             reajusteAnual: taxasCotacao?.reajuste_aluguel_anual_percentual ?? 0,
+            valorCompraTotal,
           });
           precoGoalSeek = result.precoMensalAluguel;
         }
@@ -697,6 +719,13 @@ export function CalculoItemModal({
 
   // ── Salvar Alterações ──
   const handleConfirmar = async () => {
+    // Calcular tmaAnualNum aqui para usar tanto no payload do banco quanto no updatedFields
+    const tmaAnualNum = (() => {
+      const tmaStr = tmaAnualInput.replace(',', '.');
+      const tmaPct = parseFloat(tmaStr);
+      return isNaN(tmaPct) ? 0 : tmaPct / 100;
+    })();
+
     const updatedFields: Partial<ItemLocal> = {
       caminhao_valor: parseCurrency(caminhaoValor),
       caminhao_tipo_uso: caminhaoTipoUso,
@@ -704,9 +733,29 @@ export function CalculoItemModal({
       implemento_tipo_uso: implementoTipoUso,
       caminhao_depreciacao_id: depCaminhao?.id || null,
       implemento_depreciacao_id: depImplemento?.id || null,
+      // Incluir snapshot completo em valoresCalculados para que o handleSubmit
+      // (disparado pelo autoSaveTrigger) preserve o cálculo ao recriar cotacao_item_valores
+      ...(goalSeekResult ? {
+        valoresCalculados: {
+          ...(item?.valoresCalculados || {}),
+          [prazoSelecionado]: {
+            preco_aluguel: goalSeekResult.precoMensalAluguel,
+            vpl: goalSeekResult.vpl,
+            tir: goalSeekResult.tirMensal,
+            tma_anual: tmaAnualNum,
+            juros_mensal: jurosSimulado,
+            parcela_mensal: parcelaMensal,
+            valor_compra_total: valorCompraTotal,
+            valor_venda_residual: valorVendaResidual,
+            valor_liquido_venda: valorLíquidoVenda,
+            valor_liquido_final_venda: valorLiquidoFinalVenda,
+            cashflow_snapshot: goalSeekResult.cashFlowDisplay.length > 0 ? goalSeekResult.cashFlowDisplay : null,
+          }
+        }
+      } : {}),
     };
 
-    // Atualiza estado local imediatamente
+    // Atualiza estado local imediatamente (inclui snapshot → handleSubmit usará dados corretos)
     if (onSave) {
       onSave(updatedFields);
     }
@@ -715,6 +764,36 @@ export function CalculoItemModal({
     if (item?.id) {
       setSalvando(true);
       try {
+        // ── Resolver o ID real do item no banco ──────────────────────────────────
+        // O handleSubmit pode ter feito delete+insert dos itens (gerando novos IDs).
+        // Verificamos se item.id ainda existe; se não, buscamos pelo cotacao_id + descricao.
+        let resolvedItemId = item.id;
+
+        const { data: itemExistente } = await supabase
+          .from('cotacao_itens')
+          .select('id')
+          .eq('id', item.id)
+          .maybeSingle();
+
+        if (!itemExistente) {
+          // item.id está desatualizado — buscar o ID atual pelo cotacao_id + descricao
+          const { data: itemAtual } = await supabase
+            .from('cotacao_itens')
+            .select('id')
+            .eq('cotacao_id', cotacaoId || '')
+            .eq('descricao', item.descricao)
+            .order('criado_em', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (!itemAtual) {
+            toast.error('Item não encontrado', 'O item foi removido ou a cotação foi alterada. Recarregue a página.');
+            return;
+          }
+          resolvedItemId = itemAtual.id;
+        }
+        // ────────────────────────────────────────────────────────────────────────
+
         const { error } = await supabase
           .from('cotacao_itens')
           .update({
@@ -725,7 +804,7 @@ export function CalculoItemModal({
             caminhao_depreciacao_id: updatedFields.caminhao_depreciacao_id ?? null,
             implemento_depreciacao_id: updatedFields.implemento_depreciacao_id ?? null,
           })
-          .eq('id', item.id);
+          .eq('id', resolvedItemId);
 
         if (error) {
           toast.error('Erro ao salvar no banco', error.message);
@@ -736,16 +815,26 @@ export function CalculoItemModal({
           const { data: valExistente } = await supabase
             .from('cotacao_item_valores')
             .select('id')
-            .eq('cotacao_item_id', item.id)
+            .eq('cotacao_item_id', resolvedItemId)
             .eq('prazo', prazoSelecionado)
             .maybeSingle();
 
+
           const payload = {
-            cotacao_item_id: item.id,
+            cotacao_item_id: resolvedItemId,
             prazo: prazoSelecionado,
             preco_aluguel: goalSeekResult.precoMensalAluguel,
             vpl: goalSeekResult.vpl,
             tir: goalSeekResult.tirMensal,
+            // Parâmetros usados no cálculo — congelados para não mudar mesmo que a cotação seja editada
+            tma_anual: tmaAnualNum,
+            juros_mensal: jurosSimulado,
+            parcela_mensal: parcelaMensal,
+            valor_compra_total: valorCompraTotal,
+            valor_venda_residual: valorVendaResidual,
+            valor_liquido_venda: valorLíquidoVenda,
+            valor_liquido_final_venda: valorLiquidoFinalVenda,
+            cashflow_snapshot: goalSeekResult.cashFlowDisplay.length > 0 ? goalSeekResult.cashFlowDisplay : null,
             calculado_em: new Date().toISOString(),
           };
 
@@ -774,6 +863,7 @@ export function CalculoItemModal({
 
     onClose();
   };
+
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose();
@@ -2552,7 +2642,7 @@ export function CalculoItemModal({
               </button>
               {onSave && (
                 <Button variant="primary" size="md" onClick={handleConfirmar} loading={salvando}>
-                  {salvando ? 'Salvando...' : 'Salvar Parâmetros'}
+                  {salvando ? 'Salvando...' : 'Salvar'}
                 </Button>
               )}
             </div>

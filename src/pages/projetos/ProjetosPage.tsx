@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
+import { InputNumber } from '../../components/ui/InputNumber';
 import { Select } from '../../components/ui/Select';
 import type { OptionType } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
@@ -94,10 +95,43 @@ export function ProjetosPage() {
   const [formNomeProjeto, setFormNomeProjeto] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
   const [formVendedor, setFormVendedor] = useState<OptionType | null>(null);
+  // Parâmetros comerciais padrão do projeto
+  const [formFormaPagamentoDias, setFormFormaPagamentoDias] = useState<number | string>(30);
+  const [formValidadePropostaDias, setFormValidadePropostaDias] = useState<number | string>(10);
+  const [formIndiceReajuste, setFormIndiceReajuste] = useState('IPCA / IGP-M');
+  const [formMultaRescisao, setFormMultaRescisao] = useState<number | string>(15);
+
   const [buscandoCNPJ, setBuscandoCNPJ] = useState(false);
   const [isClienteCadastrado, setIsClienteCadastrado] = useState(false);
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [globalTaxas, setGlobalTaxas] = useState<any>(null);
+
+  // Carregar padrões comerciais de cal_configuracoes_locacao
+  useEffect(() => {
+    async function loadGlobalDefaults() {
+      try {
+        const { data } = await supabase
+          .from('cal_configuracoes_locacao')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+        if (data) {
+          setGlobalTaxas(data);
+          if (data.forma_pagamento_dias_default != null) setFormFormaPagamentoDias(data.forma_pagamento_dias_default);
+          if (data.validade_proposta_dias_default != null) setFormValidadePropostaDias(data.validade_proposta_dias_default);
+          if (data.indice_reajuste_default) setFormIndiceReajuste(data.indice_reajuste_default);
+          if (data.multa_rescisao_antecipada_percentual_default != null) {
+            setFormMultaRescisao(data.multa_rescisao_antecipada_percentual_default * 100);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar defaults de projeto:', err);
+      }
+    }
+    loadGlobalDefaults();
+  }, []);
 
   // Exclusão
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -314,6 +348,10 @@ export function ProjetosPage() {
           nome: formNomeProjeto.trim(),
           descricao: formDescricao.trim() || null,
           vendedor_id: formVendedor?.value || null,
+          forma_pagamento_dias: Number(formFormaPagamentoDias) || 30,
+          validade_proposta_dias: Number(formValidadePropostaDias) || 10,
+          indice_reajuste: formIndiceReajuste.trim() || 'IPCA / IGP-M',
+          multa_rescisao_antecipada_percentual: (Number(formMultaRescisao) || 15) / 100,
           status: 'Em andamento',
           criado_por: user?.id || null
         })
@@ -322,7 +360,7 @@ export function ProjetosPage() {
 
       if (projErr || !newProj) throw projErr || new Error('Não foi possível registrar o novo projeto.');
 
-      // 2. Criar a Cotação v1 vinculada a este projeto
+      // 2. Criar a Cotação v1 vinculada a este projeto com as taxas padrão populadas
       const { data: newCot, error: cotErr } = await supabase
         .from('cotacoes')
         .insert({
@@ -337,7 +375,19 @@ export function ProjetosPage() {
           status: 'Em avaliação',
           versao: 1,
           ativo: true,
-          criado_por: user?.id || null
+          criado_por: user?.id || null,
+          comissao_venda_percentual: globalTaxas?.comissao_venda_percentual ?? 5.8,
+          imposto_venda_ir_percentual: globalTaxas?.imposto_venda_ir_percentual ?? 0.15,
+          imposto_venda_adicional_ir_percentual: globalTaxas?.imposto_venda_adicional_ir_percentual ?? 0.10,
+          imposto_venda_csll_percentual: globalTaxas?.imposto_venda_csll_percentual ?? 0.03,
+          depreciacao_contabil_percentual: globalTaxas?.depreciacao_contabil_percentual ?? 0.20,
+          documentacao_valor: globalTaxas?.documentacao_valor ?? 1000,
+          ipva_desconto_vista_percentual: globalTaxas?.ipva_desconto_vista_percentual ?? 0.03,
+          ipva_depreciacao_percentual: globalTaxas?.ipva_depreciacao_percentual ?? 0.15,
+          reajuste_aluguel_anual_percentual: globalTaxas?.reajuste_aluguel_anual_percentual ?? 0.04,
+          tma_anual_percentual: globalTaxas?.tma_anual_percentual ?? 0.30,
+          meses_antes_aluguel: globalTaxas?.meses_antes_aluguel ?? 0,
+          meses_depois_aluguel: globalTaxas?.meses_depois_aluguel ?? 3,
         })
         .select('id')
         .single();
@@ -619,8 +669,60 @@ export function ProjetosPage() {
                   value={formDescricao}
                   onChange={(e) => setFormDescricao(e.target.value)}
                   disabled={submitting}
-                  rows={3}
+                  rows={2}
                 />
+
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-grey-800)', display: 'block', marginBottom: '8px' }}>
+                    Parâmetros Comerciais da Proposta (Valores Padrão)
+                  </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', marginBottom: '4px', display: 'block' }}>
+                        Forma de pagamento (Dias)
+                      </label>
+                      <InputNumber
+                        value={formFormaPagamentoDias}
+                        onChange={(v) => setFormFormaPagamentoDias(v)}
+                        disabled={submitting}
+                        min={0}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', marginBottom: '4px', display: 'block' }}>
+                        Validade da proposta (Dias)
+                      </label>
+                      <InputNumber
+                        value={formValidadePropostaDias}
+                        onChange={(v) => setFormValidadePropostaDias(v)}
+                        disabled={submitting}
+                        min={0}
+                      />
+                    </div>
+                    <div>
+                      <Input
+                        label="Índice de reajuste"
+                        type="text"
+                        value={formIndiceReajuste}
+                        onChange={(e) => setFormIndiceReajuste(e.target.value)}
+                        disabled={submitting}
+                        placeholder="IPCA / IGP-M"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-grey-700)', marginBottom: '4px', display: 'block' }}>
+                        Multa rescisão antecipada (%)
+                      </label>
+                      <InputNumber
+                        value={formMultaRescisao}
+                        onChange={(v) => setFormMultaRescisao(v)}
+                        disabled={submitting}
+                        min={0}
+                        max={100}
+                      />
+                    </div>
+                  </div>
+                </div>
 
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                   <Button

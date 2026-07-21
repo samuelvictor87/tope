@@ -88,87 +88,56 @@ export function ConfiguracoesProjeto({
   }
 
   return (
-    <div className="tab-content-container">
-      <div className="tab-header">
-        <h3 className="tab-title">Configurações gerais do projeto e proposta</h3>
-        <p className="tab-description">
-          Parâmetros comerciais padronizados para criação de propostas e projetos.
-        </p>
+    <div className="config-locacao-section">
+      <div className="config-locacao-section-header">
+        <h2>Configurações do projeto</h2>
+        <p>Parâmetros comerciais padronizados para criação de propostas e projetos.</p>
       </div>
 
-      <div className="tab-form" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-          <div>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-grey-800)', marginBottom: '6px', display: 'block' }}>
-              Forma de pagamento (Dias) *
-            </label>
-            <InputNumber
-              value={formaPagamentoDias}
-              onChange={(val) => setFormaPagamentoDias(val)}
-              placeholder="30"
-              min={0}
-            />
-            <span style={{ fontSize: '11px', color: 'var(--color-grey-450)', marginTop: '4px', display: 'block' }}>
-              Prazo em dias padrão para pagamento (ex: 30 dias).
-            </span>
-          </div>
+      <div className="config-locacao-grid-4">
+        <InputNumber
+          label="Forma de pagamento (Dias)"
+          value={formaPagamentoDias}
+          onChange={(v) => setFormaPagamentoDias(v)}
+          step={1}
+          min={0}
+          required
+        />
+        <InputNumber
+          label="Validade da proposta (Dias)"
+          value={validadePropostaDias}
+          onChange={(v) => setValidadePropostaDias(v)}
+          step={1}
+          min={0}
+          required
+        />
+        <Input
+          label="Índice de reajuste"
+          type="text"
+          value={indiceReajuste}
+          onChange={(e) => setIndiceReajuste(e.target.value)}
+          placeholder="IPCA / IGP-M"
+          required
+        />
+        <InputNumber
+          label="Multa rescisão antecipada (%)"
+          value={multaRescisao}
+          onChange={(v) => setMultaRescisao(v)}
+          step={0.01}
+          min={0}
+          required
+        />
+      </div>
 
-          <div>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-grey-800)', marginBottom: '6px', display: 'block' }}>
-              Validade da proposta (Dias) *
-            </label>
-            <InputNumber
-              value={validadePropostaDias}
-              onChange={(val) => setValidadePropostaDias(val)}
-              placeholder="10"
-              min={0}
-            />
-            <span style={{ fontSize: '11px', color: 'var(--color-grey-450)', marginTop: '4px', display: 'block' }}>
-              Validade padrão da proposta comercial (ex: 10 dias).
-            </span>
-          </div>
-
-          <div>
-            <Input
-              label="Índice de reajuste *"
-              type="text"
-              value={indiceReajuste}
-              onChange={(e) => setIndiceReajuste(e.target.value)}
-              placeholder="IPCA / IGP-M"
-              required
-            />
-            <span style={{ fontSize: '11px', color: 'var(--color-grey-450)', marginTop: '4px', display: 'block' }}>
-              Descrição do índice de reajuste anual.
-            </span>
-          </div>
-
-          <div>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-grey-800)', marginBottom: '6px', display: 'block' }}>
-              Multa da rescisão antecipada (%) *
-            </label>
-            <InputNumber
-              value={multaRescisao}
-              onChange={(val) => setMultaRescisao(val)}
-              placeholder="15"
-              min={0}
-              max={100}
-            />
-            <span style={{ fontSize: '11px', color: 'var(--color-grey-450)', marginTop: '4px', display: 'block' }}>
-              Porcentagem da multa por rescisão antecipada (ex: 15%).
-            </span>
-          </div>
-        </div>
-
-        <div className="tab-footer" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '12px' }}>
-          <Button
-            variant="primary"
-            onClick={handleSalvar}
-            loading={salvando}
-            disabled={salvando}
-          >
-            Salvar alterações
-          </Button>
-        </div>
+      <div className="config-locacao-footer-actions">
+        <Button
+          variant="primary"
+          onClick={handleSalvar}
+          loading={salvando}
+          disabled={salvando}
+        >
+          Salvar alterações
+        </Button>
       </div>
     </div>
   );
