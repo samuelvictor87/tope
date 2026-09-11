@@ -123,7 +123,7 @@ export function ItemCaminhaoModal({
     try {
       const { data, error } = await supabase
         .from('caminhoes_entre_eixos')
-        .select('id, caminhao_id, dimensao, peso_ordem_marcha, pbt_tecnico, pbt_homologado, preco, caminhao:caminhoes(id, modelo, familia)')
+        .select('id, caminhao_id, dimensao, peso_ordem_marcha, pbt_tecnico, pbt_homologado, preco, caminhao:caminhoes(id, modelo, familia, tipo)')
         .eq('is_active', true)
         .order('dimensao');
 
@@ -132,7 +132,7 @@ export function ItemCaminhaoModal({
         return;
       }
 
-      const rows = (data || []) as any[];
+      const rows = ((data || []) as any[]).filter((r: any) => (r.caminhao?.tipo || 'caminhao') === 'caminhao');
 
       const dimensoesUnicas = [
         ...new Set(rows.map((r: any) => r.dimensao)),

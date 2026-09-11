@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Truck,
+  Cube,
   Wrench,
   UsersThree,
   User,
@@ -9,7 +10,9 @@ import {
   Gear,
   SignOut,
   ClipboardText,
-  Calculator
+  Calculator,
+  Factory,
+  Package,
 } from '@phosphor-icons/react';
 import { useAuth } from '../../contexts/AuthContext';
 import logoTope from '../../assets/logo-tope.png';
@@ -35,14 +38,30 @@ export function DashboardLayout({
 
   const menuItems = [
     { path: '/painel/projetos', label: 'Projetos', icon: <ClipboardText size={20} /> },
-    { path: '/painel/caminhoes', label: 'Caminhões', icon: <Truck size={20} /> },
+    { path: '/painel/frota', label: 'Caminhões', icon: <Truck size={20} /> },
+    { path: '/painel/frota/implementos', label: 'Implementos da frota', icon: <Package size={20} /> },
+    { path: '/painel/modelos', label: 'Modelos', icon: <Cube size={20} /> },
     { path: '/painel/implementos', label: 'Implementos', icon: <Wrench size={20} /> },
     { path: '/painel/fornecedores', label: 'Fornecedores', icon: <UsersThree size={20} /> },
+    { path: '/painel/implementadoras', label: 'Implementadoras', icon: <Factory size={20} /> },
     { path: '/painel/clientes', label: 'Clientes', icon: <Users size={20} /> },
     { path: '/painel/usuarios', label: 'Usuários', icon: <User size={20} /> },
     { path: '/painel/calculos', label: 'Cálculos', icon: <Calculator size={20} /> },
     { path: '/painel/configuracoes', label: 'Configurações', icon: <Gear size={20} /> },
   ];
+
+  const isMenuActive = (path: string) => {
+    if (path === '/painel/frota') {
+      return location.pathname === '/painel/frota' || /^\/painel\/frota\/[0-9a-f-]{8,}$/i.test(location.pathname);
+    }
+    if (path === '/painel/frota/implementos') {
+      return location.pathname.startsWith('/painel/frota/implementos');
+    }
+    if (path === '/painel/modelos') {
+      return location.pathname.startsWith('/painel/modelos') || location.pathname.startsWith('/painel/caminhoes');
+    }
+    return location.pathname.startsWith(path);
+  };
 
   const handleLogout = async () => {
     try {
@@ -70,7 +89,7 @@ export function DashboardLayout({
 
         <nav className="sidebar-nav">
           {menuItems.map((item) => {
-            const isActive = location.pathname.startsWith(item.path);
+            const isActive = isMenuActive(item.path);
             return (
               <Link
                 key={item.path}

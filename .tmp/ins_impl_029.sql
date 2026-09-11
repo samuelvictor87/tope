@@ -1,0 +1,13 @@
+INSERT INTO frota_implementos (id, nome, valor, nf, implementadora_id, observacoes) VALUES
+('f0012103-3817-45a4-a943-3d2e9157cbb2'::uuid, 'Munck TKA 12.700 TRAVE (3 lanças hidr. + 2 manuais, montagem dianteira, cor laranja Calif Ford 78) + Carroceria em aço 7,00 x 2,50 x 0,45m completa', 30000.00, '06', '2a29552b-5691-46c5-a265-2e365afb2b8a'::uuid, 'import:row:1308#0'),
+('39f69f87-5575-41fa-a56e-5fc325f5b128'::uuid, 'Carroceria de madeira 4,30 x 2,20 x 0,45m', 15000.00, 'E 003.835', '2a29552b-5691-46c5-a265-2e365afb2b8a'::uuid, 'import:row:1310#0'),
+('5ddfb3e5-57d2-49b1-bf99-cc2b2f09d3e5'::uuid, 'Baú 6,2m (PORTA LATERAL COM CANALETA E DRENO NA PARTE INTERNA TRASEIRA)', 29700.00, 'Nº PEDIDO 015980', '24e8eed7-2773-49cc-868c-4faa5fc36591'::uuid, 'import:row:1311#0'),
+('aab977ce-b97c-42e2-bf95-ca41cf4363d6'::uuid, 'LOCAÇÃO LM', NULL, 'LOCAÇÃO LM', NULL, 'import:row:1312#0'),
+('4d1beba1-4ccc-45cc-898d-0bb0124f289f'::uuid, 'LOCAÇÃO LM', NULL, 'LOCAÇÃO LM', NULL, 'import:row:1313#0'),
+('a9d3a0d1-f190-42e4-a5f8-1f5cfdb07436'::uuid, 'Baú 5,5m (PORTA LATERAL COM CANALETA E DRENO NA PARTE INTERNA TRASEIRA)', NULL, '17414', '24e8eed7-2773-49cc-868c-4faa5fc36591'::uuid, 'import:row:1314#0'),
+('e3db5d0a-f246-49ea-942a-bb71ba67dfe4'::uuid, 'Baú 5,5m (PORTA LATERAL COM CANALETA E DRENO NA PARTE INTERNA TRASEIRA)', NULL, 'Nº PEDIDO 015979', '24e8eed7-2773-49cc-868c-4faa5fc36591'::uuid, 'import:row:1315#0'),
+('21c51373-269a-4b33-b3ba-1447f76cb7c0'::uuid, 'Baú 4,3m (PORTA LATERAL COM CANALETA E DRENO NA PARTE INTERNA TRASEIRA)', 42400.00, 'Nº PEDIDO 015978', '24e8eed7-2773-49cc-868c-4faa5fc36591'::uuid, 'import:row:1316#0'),
+('a3ca94dd-cc57-4a74-83b6-c81a2557612f'::uuid, 'Guindaste sucateiro HB Garras HBG 10.720S traseiro c/ cabine (ar cond., som, painel LCD, joystick hidráulico, garra sucateira GS-2004 4 unhas, rotator GR 6t, sapatas extensivas hidráulicas, fecha 7,20m, pintura laranja/preto padrão HBG c/ logo TOPE) + Contêiner CS R702422R 30m³ c/ rebaixo (7,00 x 2,40 x 2,20m)', 428000.00, NULL, '0199d68a-9f6f-4879-a316-347f8a54719c'::uuid, 'import:row:1317#0'),
+('9cb4cb4f-0c5c-4d1e-a58b-0c5ab9ba53d6'::uuid, 'POLINGUINDASTE ARTICULADO LANÇA CURTA  10T ( IMPLEMENTO RETIRADO DO VEÍCULO DE PLACA GCJ8G67) CHASSI ENCURTADO PARA 3600MM -NF 1863 MEC TRUCK', 92000.00, '8077', 'c342b991-c25b-48c4-ba35-b65d22221db6'::uuid, 'import:row:1318#0'),
+('83ce6528-9993-4832-b2db-263618898b28'::uuid, 'POLINGUINDASTE ARTICULADO LANÇA CURTA  10T ( IMPLEMENTO RETIRADO DO VEÍCULO DE PLACA GHF9B07)CHASSI ENCURTADO PARA 3600MM-NF 1863 MEC TRUCK', 78150.00, '7866', 'c342b991-c25b-48c4-ba35-b65d22221db6'::uuid, 'import:row:1319#0'),
+('c28e6947-23ca-4c44-a072-e620c10dab6f'::uuid, 'IMPLEMENTO DO CLIENTE', NULL, 'IMPLEMENTO DO CLIENTE', NULL, 'import:row:1323#0');

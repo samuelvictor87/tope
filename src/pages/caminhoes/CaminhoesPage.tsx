@@ -28,17 +28,36 @@ interface Wheelbase {
 interface Caminhao {
   id: string;
   createdAt: string;
+  tipo: 'caminhao' | 'carro';
+  marca: string;
   family: string;
   model: string;
   transmission: string[];
   wheelbases: Wheelbase[];
 }
 
-// Opções estáticas para Selects
+const TIPO_OPTIONS: OptionType[] = [
+  { value: 'caminhao', label: 'Caminhão' },
+  { value: 'carro', label: 'Carro' },
+];
+
+const MARCA_OPTIONS: OptionType[] = [
+  { value: 'VOLKSWAGEN', label: 'Volkswagen' },
+  { value: 'AUDI', label: 'Audi' },
+  { value: 'BMW', label: 'BMW' },
+];
+
 const FAMILY_OPTIONS: OptionType[] = [
   { value: 'Constellation', label: 'Constellation' },
   { value: 'Meteor', label: 'Meteor' },
-  { value: 'Delivery', label: 'Delivery' }
+  { value: 'Delivery', label: 'Delivery' },
+  { value: 'e-Delivery', label: 'e-Delivery' },
+  { value: 'Vocacionais', label: 'Vocacionais' },
+];
+
+const FILTER_TIPO_OPTIONS: OptionType[] = [
+  { value: 'Todos', label: 'Tipo (Todos)' },
+  ...TIPO_OPTIONS,
 ];
 
 const FILTER_FAMILY_OPTIONS: OptionType[] = [
@@ -91,8 +110,11 @@ export function CaminhoesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterFamily, setFilterFamily] = useState<OptionType | null>({ value: 'Todos', label: 'Família (Todas)' });
+  const [filterTipo, setFilterTipo] = useState<OptionType | null>({ value: 'Todos', label: 'Tipo (Todos)' });
 
   // Formulário - Ficha Técnica
+  const [formTipo, setFormTipo] = useState<OptionType | null>(TIPO_OPTIONS[0]);
+  const [formMarca, setFormMarca] = useState<OptionType | null>(MARCA_OPTIONS[0]);
   const [formFamily, setFormFamily] = useState<OptionType | null>(null);
   const [formModel, setFormModel] = useState('');
   const [formTransmission, setFormTransmission] = useState<OptionType[] | null>(null);
@@ -147,6 +169,10 @@ export function CaminhoesPage() {
         }
       }
 
+      if (filterTipo && filterTipo.value !== 'Todos') {
+        query = query.eq('tipo', filterTipo.value);
+      }
+
       if (filterFamily && filterFamily.value !== 'Todos') {
         query = query.eq('familia', filterFamily.value);
       }
@@ -163,9 +189,11 @@ export function CaminhoesPage() {
         const mapped = data.map((item: any) => ({
           id: item.id,
           createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
-          family: item.familia,
+          tipo: item.tipo === 'carro' ? 'carro' : 'caminhao',
+          marca: item.marca || 'VOLKSWAGEN',
+          family: item.familia || '',
           model: item.modelo,
-          transmission: Array.isArray(item.transmissao) ? item.transmissao : [item.transmissao],
+          transmission: Array.isArray(item.transmissao) ? item.transmissao : item.transmissao ? [item.transmissao] : [],
           wheelbases: (item.caminhoes_entre_eixos || []).map((w: any) => ({
             dimension: w.dimensao,
             price: w.preco,
@@ -198,11 +226,13 @@ export function CaminhoesPage() {
   // Carregar caminhões quando a página ou filtro mudam
   useEffect(() => {
     loadCaminhoes();
-  }, [currentPage, filterFamily, debouncedSearch]);
+  }, [currentPage, filterFamily, filterTipo, debouncedSearch]);
 
   // Transição de Telas
   const handleOpenCreateForm = () => {
     setEditingCaminhao(null);
+    setFormTipo(TIPO_OPTIONS[0]);
+    setFormMarca(MARCA_OPTIONS[0]);
     setFormFamily(null);
     setFormModel('');
     setFormTransmission([]);
@@ -213,9 +243,11 @@ export function CaminhoesPage() {
 
   const handleOpenEditForm = (cam: Caminhao) => {
     setEditingCaminhao(cam);
-    setFormFamily({ value: cam.family, label: cam.family });
+    setFormTipo(TIPO_OPTIONS.find(o => o.value === cam.tipo) || TIPO_OPTIONS[0]);
+    setFormMarca(MARCA_OPTIONS.find(o => o.value === cam.marca) || { value: cam.marca, label: cam.marca });
+    setFormFamily(cam.family ? { value: cam.family, label: cam.family } : null);
     setFormModel(cam.model);
-    const transArray = Array.isArray(cam.transmission) ? cam.transmission : [cam.transmission];
+    const transArray = (Array.isArray(cam.transmission) ? cam.transmission : []).filter(Boolean);
     setFormTransmission(transArray.map(t => ({ value: t, label: t })));
     setFormWheelbases(cam.wheelbases);
     clearWbFields();
@@ -261,12 +293,16 @@ export function CaminhoesPage() {
 
   // Salvar Caminhão
   const handleSaveCaminhao = async () => {
-    if (!formFamily || !formModel.trim() || !formTransmission || formTransmission.length === 0) {
-      toast.error('Ficha técnica incompleta', 'Preencha a família, modelo e pelo menos uma transmissão do caminhão.');
+    const isCaminhao = formTipo?.value !== 'carro';
+    if (!formMarca || !formModel.trim()) {
+      toast.error('Ficha técnica incompleta', 'Preencha a marca e o modelo.');
       return;
     }
-
-    if (formWheelbases.length === 0) {
+    if (isCaminhao && (!formTransmission || formTransmission.length === 0)) {
+      toast.error('Ficha técnica incompleta', 'Selecione pelo menos uma transmissão do caminhão.');
+      return;
+    }
+    if (isCaminhao && formWheelbases.length === 0) {
       toast.error('Nenhum entre-eixo', 'Associe pelo menos um entre-eixo ao caminhão.');
       return;
     }
@@ -274,9 +310,11 @@ export function CaminhoesPage() {
     setSaving(true);
     try {
       const dataCaminhao = {
-        familia: formFamily.value,
+        tipo: formTipo?.value || 'caminhao',
+        marca: formMarca.value,
+        familia: formFamily?.value || null,
         modelo: formModel.trim(),
-        transmissao: formTransmission.map(opt => opt.value)
+        transmissao: isCaminhao ? (formTransmission || []).map(opt => opt.value) : null,
       };
 
       let caminhaoId = '';
@@ -310,23 +348,24 @@ export function CaminhoesPage() {
         caminhaoId = camData.id;
       }
 
-      // 2. Inserir os novos entre-eixos
-      const wbRows = formWheelbases.map(wb => ({
-        caminhao_id: caminhaoId,
-        dimensao: wb.dimension,
-        preco: wb.price,
-        peso_ordem_marcha: wb.curbWeight,
-        pbt_tecnico: wb.technicalPbt,
-        pbt_homologado: wb.homologatedPbt,
-        pbtc_homologado: wb.homologatedPbtc,
-        vigencia_preco: wb.priceValidity
-      }));
+      if (isCaminhao && formWheelbases.length > 0) {
+        const wbRows = formWheelbases.map(wb => ({
+          caminhao_id: caminhaoId,
+          dimensao: wb.dimension,
+          preco: wb.price,
+          peso_ordem_marcha: wb.curbWeight,
+          pbt_tecnico: wb.technicalPbt,
+          pbt_homologado: wb.homologatedPbt,
+          pbtc_homologado: wb.homologatedPbtc,
+          vigencia_preco: wb.priceValidity
+        }));
 
-      const { error: wbError } = await supabase
-        .from('caminhoes_entre_eixos')
-        .insert(wbRows);
+        const { error: wbError } = await supabase
+          .from('caminhoes_entre_eixos')
+          .insert(wbRows);
 
-      if (wbError) throw wbError;
+        if (wbError) throw wbError;
+      }
 
       toast.success(editingCaminhao ? 'Caminhão atualizado com sucesso!' : 'Novo caminhão registrado com sucesso!');
       setIsFormMode(false);
@@ -370,8 +409,8 @@ export function CaminhoesPage() {
 
   return (
     <DashboardLayout
-      pageTitle="Caminhões"
-      pageSubtitle="Organize chassis e entre-eixos compatíveis."
+      pageTitle="Modelos"
+      pageSubtitle="Catálogo de caminhões e carros. A cotação usa só os caminhões."
     >
       {!isFormMode ? (
         <>
@@ -395,6 +434,17 @@ export function CaminhoesPage() {
                 style={{ height: 38 }}
               />
             </div>
+            <div style={{ width: 160 }}>
+              <Select
+                options={FILTER_TIPO_OPTIONS}
+                value={filterTipo}
+                onChange={opt => {
+                  setFilterTipo(opt as OptionType);
+                  setCurrentPage(1);
+                }}
+                placeholder="Tipo"
+              />
+            </div>
             <div style={{ width: 200 }}>
               <Select
                 options={FILTER_FAMILY_OPTIONS}
@@ -407,7 +457,7 @@ export function CaminhoesPage() {
               />
             </div>
             <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-grey-500)', marginLeft: 'var(--spacing-8)' }}>
-              {totalCount} {totalCount === 1 ? 'caminhão' : 'caminhões'}
+              {totalCount} {totalCount === 1 ? 'modelo' : 'modelos'}
             </span>
 
             {/* Botão Novo Caminhão alinhado à direita */}
@@ -418,7 +468,7 @@ export function CaminhoesPage() {
                 style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}
               >
                 <Plus size={16} weight="bold" />
-                Novo caminhão
+                Novo modelo
               </Button>
             </div>
           </div>
@@ -428,33 +478,41 @@ export function CaminhoesPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: '10%' }}>Data</th>
-                  <th style={{ width: '15%' }}>Família</th>
-                  <th style={{ width: '25%' }}>Modelo</th>
-                  <th style={{ width: '15%' }}>Transmissão</th>
-                  <th style={{ width: '12%' }}>Entre-eixos</th>
-                  <th style={{ width: '13%' }}>Preços</th>
-                  <th style={{ width: '10%', textAlign: 'right' }}>Ações</th>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>Marca</th>
+                  <th>Família</th>
+                  <th>Modelo</th>
+                  <th>Transmissão</th>
+                  <th>Entre-eixos</th>
+                  <th>Preços</th>
+                  <th style={{ textAlign: 'right' }}>Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
-                      Carregando caminhões...
+                    <td colSpan={9} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                      Carregando modelos...
                     </td>
                   </tr>
                 ) : caminhoes && caminhoes.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
-                      Nenhum caminhão registrado.
+                    <td colSpan={9} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                      Nenhum modelo registrado.
                     </td>
                   </tr>
                 ) : (
                   caminhoes.map(cam => (
                     <tr key={cam.id}>
                       <td>{cam.createdAt}</td>
-                      <td>{cam.family}</td>
+                      <td>
+                        <Badge variant={cam.tipo === 'carro' ? 'neutral' : 'primary'}>
+                          {cam.tipo === 'carro' ? 'Carro' : 'Caminhão'}
+                        </Badge>
+                      </td>
+                      <td>{cam.marca}</td>
+                      <td>{cam.family || '—'}</td>
                       <td style={{ fontWeight: 600, color: 'var(--color-grey-800)' }}>{cam.model}</td>
                       <td>{Array.isArray(cam.transmission) ? cam.transmission.join(', ') : cam.transmission}</td>
                       <td>
@@ -497,7 +555,7 @@ export function CaminhoesPage() {
               totalCount={totalCount}
               itemsPerPage={ITEMS_PER_PAGE}
               onPageChange={setCurrentPage}
-              itemLabel="caminhões"
+              itemLabel="modelos"
             />
           </div>
         </>
@@ -506,8 +564,8 @@ export function CaminhoesPage() {
         <div className="caminhao-form-container">
           <div className="caminhao-form-header">
             <div className="caminhao-form-title-wrapper">
-              <h3>{editingCaminhao ? 'Editar caminhão' : 'Novo caminhão'}</h3>
-              <p>Forneça as informações cadastrais.</p>
+              <h3>{editingCaminhao ? 'Editar modelo' : 'Novo modelo'}</h3>
+              <p>Caminhão para cotação e frota; carro só para a frota.</p>
             </div>
             <div className="caminhao-form-actions">
               <Button variant="secondary" onClick={() => setIsFormMode(false)}>
@@ -525,11 +583,24 @@ export function CaminhoesPage() {
               <h4 className="caminhao-fiche-tecnica-title">Ficha técnica</h4>
               
               <Select
+                label="Tipo"
+                options={TIPO_OPTIONS}
+                value={formTipo}
+                onChange={opt => setFormTipo(opt as OptionType)}
+              />
+              <Select
+                label="Marca"
+                options={MARCA_OPTIONS}
+                value={formMarca}
+                onChange={opt => setFormMarca(opt as OptionType)}
+              />
+              <Select
                 label="Família"
-                placeholder="Selecione a família..."
+                placeholder="Opcional"
                 options={FAMILY_OPTIONS}
                 value={formFamily}
-                onChange={opt => setFormFamily(opt as OptionType)}
+                onChange={opt => setFormFamily((opt as OptionType) || null)}
+                isClearable
               />
 
               <Input
@@ -540,6 +611,7 @@ export function CaminhoesPage() {
                 required
               />
 
+              {formTipo?.value !== 'carro' && (
               <Select
                 label="Transmissão"
                 placeholder="Selecione as transmissões..."
@@ -548,9 +620,10 @@ export function CaminhoesPage() {
                 onChange={opt => setFormTransmission(opt as OptionType[])}
                 isMulti
               />
+              )}
             </div>
 
-            {/* Novo Entre-Eixos e Compatibilidade (Direita) */}
+            {formTipo?.value !== 'carro' && (
             <div>
               <div className="caminhao-wheelbase-card">
                 <div className="caminhao-wheelbase-card-header">
@@ -657,6 +730,7 @@ export function CaminhoesPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       )}

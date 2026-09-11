@@ -4,7 +4,8 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { AUTH_FETCH_TIMEOUT_MS, supabase } from '../../lib/supabase';
+import { getLoginErrorMessage, LOGIN_TIMEOUT_ERROR } from '../../lib/authErrors';
 import logoTope from '../../assets/logo-tope.png';
 import bgLogin from '../../assets/login-bg.jpg';
 import '../../styles/components/login.css';
@@ -36,20 +37,27 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const loginPromise = supabase.auth.signInWithPassword({
         email,
         password,
       });
 
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(LOGIN_TIMEOUT_ERROR)), AUTH_FETCH_TIMEOUT_MS);
+      });
+
+      const { error } = await Promise.race([loginPromise, timeoutPromise]);
+
       if (error) {
-        toast.error('Erro de autenticação', 'E-mail ou senha incorretos.');
+        const { title, message } = getLoginErrorMessage(error);
+        toast.error(title, message);
       } else {
         toast.success('Sucesso', 'Bem-vindo de volta!');
         navigate('/painel/usuarios');
       }
     } catch (err) {
-      console.error('Login error:', err);
-      toast.error('Erro de autenticação', 'Ocorreu um erro ao tentar fazer login.');
+      const { title, message } = getLoginErrorMessage(err);
+      toast.error(title, message);
     } finally {
       setLoading(false);
     }

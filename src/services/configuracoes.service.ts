@@ -398,6 +398,7 @@ export async function listarCaminhoes(): Promise<Caminhao[]> {
   const { data, error } = await supabase
     .from('caminhoes')
     .select('id, familia, modelo, transmissao')
+    .eq('tipo', 'caminhao')
     .order('familia', { ascending: true });
 
   if (error) {

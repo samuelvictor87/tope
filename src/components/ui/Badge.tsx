@@ -2,7 +2,7 @@
 import React from 'react';
 import '../../styles/components/badge.css';
 
-type BadgeVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary';
+export type BadgeVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary';
 
 interface BadgeProps {
   variant?: BadgeVariant;

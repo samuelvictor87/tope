@@ -81,9 +81,9 @@ export interface DepreciacaoImplemento {
 
 export interface Caminhao {
   id: string;
-  familia: string;
+  familia: string | null;
   modelo: string;
-  transmissao: string[];
+  transmissao: string[] | null;
 }
 
 export interface Categoria {

@@ -9,6 +9,10 @@ import { ClientesPage } from './pages/clientes/ClientesPage';
 import { FornecedoresPage } from './pages/fornecedores/FornecedoresPage';
 import { ImplementosPage } from './pages/implementos/ImplementosPage';
 import { CaminhoesPage } from './pages/caminhoes/CaminhoesPage';
+import { FrotaPage } from './pages/frota/FrotaPage';
+import { FrotaVeiculoPage } from './pages/frota/FrotaVeiculoPage';
+import { FrotaImplementosPage } from './pages/frota/FrotaImplementosPage';
+import { ImplementadorasPage } from './pages/frota/ImplementadorasPage';
 import { ConfiguracoesPage } from './pages/configuracoes/ConfiguracoesPage';
 import { NovaCotacaoPage } from './pages/cotacoes/NovaCotacaoPage';
 import { CalculosPage } from './pages/calculos/CalculosPage';
@@ -30,7 +34,7 @@ export default function App() {
             {/* Rotas legadas para compatibilidade/redirecionamento */}
             <Route path="/dashboard" element={<Navigate to="/painel/usuarios" replace />} />
             <Route path="/usuarios" element={<Navigate to="/painel/usuarios" replace />} />
-            <Route path="/caminhoes" element={<Navigate to="/painel/caminhoes" replace />} />
+            <Route path="/caminhoes" element={<Navigate to="/painel/frota" replace />} />
             <Route path="/implementos" element={<Navigate to="/painel/implementos" replace />} />
             <Route path="/fornecedores" element={<Navigate to="/painel/fornecedores" replace />} />
             <Route path="/clientes" element={<Navigate to="/painel/clientes" replace />} />
@@ -39,7 +43,12 @@ export default function App() {
 
             {/* Rotas protegidas sob o painel */}
             <Route path="/painel/usuarios" element={<ProtectedRoute><UsuariosPage /></ProtectedRoute>} />
+            <Route path="/painel/frota" element={<ProtectedRoute><FrotaPage /></ProtectedRoute>} />
+            <Route path="/painel/frota/implementos" element={<ProtectedRoute><FrotaImplementosPage /></ProtectedRoute>} />
+            <Route path="/painel/frota/:id" element={<ProtectedRoute><FrotaVeiculoPage /></ProtectedRoute>} />
+            <Route path="/painel/implementadoras" element={<ProtectedRoute><ImplementadorasPage /></ProtectedRoute>} />
             <Route path="/painel/caminhoes" element={<ProtectedRoute><CaminhoesPage /></ProtectedRoute>} />
+            <Route path="/painel/modelos" element={<ProtectedRoute><CaminhoesPage /></ProtectedRoute>} />
             <Route path="/painel/implementos" element={<ProtectedRoute><ImplementosPage /></ProtectedRoute>} />
             <Route path="/painel/fornecedores" element={<ProtectedRoute><FornecedoresPage /></ProtectedRoute>} />
             <Route path="/painel/clientes" element={<ProtectedRoute><ClientesPage /></ProtectedRoute>} />

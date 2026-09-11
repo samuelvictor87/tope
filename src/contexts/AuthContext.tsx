@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import type { Session, User } from '@supabase/supabase-js';
+import { AUTH_FETCH_TIMEOUT_MS, supabase } from '../lib/supabase';
+import { isNetworkAuthError } from '../lib/authErrors';
 
 export interface Profile {
   id: string;
@@ -56,44 +57,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let fallbackTimeoutId: ReturnType<typeof setTimeout>;
 
-    // Timeout de segurança: garante que a tela saia de loading em no máximo 3 segundos
-    const timeoutId = setTimeout(() => {
-      if (active) {
-        console.warn('Auth fallback timeout triggered');
+    const clearFallbackTimeout = () => {
+      clearTimeout(fallbackTimeoutId);
+    };
+
+    const loadProfile = (userId: string) => {
+      void fetchProfile(userId).then((prof) => {
+        if (active) setProfile(prof);
+      });
+    };
+
+    const resolveAuth = (session: Session | null) => {
+      if (!active) return;
+      clearFallbackTimeout();
+
+      if (session?.user) {
+        setUser(session.user);
         setLoading(false);
+        loadProfile(session.user.id);
+        return;
       }
-    }, 3000);
 
-    // Escuta unificada para mudanças no estado de autenticação
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+    };
+
+    const handleAuthError = async (error: unknown) => {
+      if (!active) return;
+      clearFallbackTimeout();
+
+      if (isNetworkAuthError(error)) {
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {
+          // Ignora falha ao limpar sessão local
+        }
+      }
+
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+    };
+
+    fallbackTimeoutId = setTimeout(() => {
+      if (active) setLoading(false);
+    }, AUTH_FETCH_TIMEOUT_MS + 1000);
+
+    void supabase.auth
+      .getSession()
+      .then(({ data: { session }, error }) => {
+        if (!active) return;
+        if (error) {
+          void handleAuthError(error);
+          return;
+        }
+        resolveAuth(session);
+      })
+      .catch((error) => {
+        void handleAuthError(error);
+      });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (!active) return;
-
-        if (session) {
-          setUser(session.user);
-          // Busca o perfil de forma assíncrona fora do loop de bloqueio do Supabase
-          setTimeout(async () => {
-            if (!active) return;
-            const prof = await fetchProfile(session.user.id);
-            if (active) {
-              setProfile(prof);
-              setLoading(false);
-            }
-          }, 0);
-        } else {
-          setUser(null);
-          setProfile(null);
-          if (active) {
-            setLoading(false);
-          }
-        }
+        resolveAuth(session);
       }
     );
 
     return () => {
       active = false;
-      clearTimeout(timeoutId);
+      clearFallbackTimeout();
       subscription.unsubscribe();
     };
   }, []);
