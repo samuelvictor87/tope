@@ -19,6 +19,7 @@ interface Cliente {
   createdAt: string;
   razaoSocial: string;
   cnpj: string;
+  inscricaoEstadual: string;
   contatoNome: string;
   contatoTelefone: string;
   contatoEmail: string;
@@ -118,6 +119,7 @@ export function ClientesPage() {
 
   // Form Fields
   const [formCNPJ, setFormCNPJ] = useState('');
+  const [formInscricaoEstadual, setFormInscricaoEstadual] = useState('');
   const [formRazaoSocial, setFormRazaoSocial] = useState('');
   const [formNome, setFormNome] = useState('');
   const [formEmail, setFormEmail] = useState('');
@@ -210,6 +212,7 @@ export function ClientesPage() {
           createdAt: new Date(item.criado_em).toLocaleDateString('pt-BR'),
           razaoSocial: item.razao_social,
           cnpj: item.cnpj,
+          inscricaoEstadual: item.inscricao_estadual || '',
           contatoNome: item.contato_nome || '',
           contatoTelefone: item.contato_telefone || '',
           contatoEmail: item.contato_email || '',
@@ -349,6 +352,7 @@ export function ClientesPage() {
   const handleOpenCreateDrawer = () => {
     setEditingCliente(null);
     setFormCNPJ('');
+    setFormInscricaoEstadual('');
     setFormRazaoSocial('');
     setFormNome('');
     setFormEmail('');
@@ -368,6 +372,7 @@ export function ClientesPage() {
   const handleOpenEditDrawer = (c: Cliente) => {
     setEditingCliente(c);
     setFormCNPJ(c.cnpj);
+    setFormInscricaoEstadual(c.inscricaoEstadual);
     setFormRazaoSocial(c.razaoSocial);
     setFormNome(c.contatoNome);
     setFormEmail(c.contatoEmail);
@@ -400,6 +405,7 @@ export function ClientesPage() {
       const clientData = {
         cnpj: formCNPJ,
         razao_social: formRazaoSocial,
+        inscricao_estadual: formInscricaoEstadual || null,
         contato_nome: formNome || null,
         contato_email: formEmail || null,
         contato_telefone: formTelefone || null,
@@ -560,7 +566,7 @@ export function ClientesPage() {
                   <td>
                     <div className="cliente-cell-razao">
                       <span className="cliente-razao-text">{c.razaoSocial}</span>
-                      <span className="cliente-cnpj-text">{c.cnpj}</span>
+                      <span className="cliente-cnpj-text">{c.cnpj}{c.inscricaoEstadual ? ` · IE ${c.inscricaoEstadual}` : ''}</span>
                     </div>
                   </td>
                   <td>
@@ -661,6 +667,12 @@ export function ClientesPage() {
                 value={formRazaoSocial}
                 onChange={e => setFormRazaoSocial(e.target.value)}
                 required
+              />
+              <Input
+                label="Inscrição Estadual"
+                placeholder="Ex: 123.456.789.012 ou ISENTO"
+                value={formInscricaoEstadual}
+                onChange={e => setFormInscricaoEstadual(e.target.value)}
               />
             </div>
           </div>

@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash, LinkSimple, LinkBreak } from '@phosphor-icons/react';
+import { Plus, ArrowSquareOut, Trash } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
 import { InputNumber } from '../../components/ui/InputNumber';
-import { InputDate } from '../../components/ui/InputDate';
 import { Select } from '../../components/ui/Select';
 import type { OptionType } from '../../components/ui/Select';
 import { Drawer } from '../../components/ui/Drawer';
@@ -17,14 +16,9 @@ import { Textarea } from '../../components/ui/Textarea';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import {
-  acoplarImplemento,
-  brToIso,
-  desacoplarImplemento,
   formatMoney,
   parseMoney,
   registrarMovimento,
-  todayBr,
-  todayIso,
   asObject,
 } from './frotaShared';
 import '../../styles/components/frota.css';
@@ -38,7 +32,6 @@ interface ImplementoRow {
   observacoes: string;
   implementadoraId: string | null;
   implementadoraNome: string;
-  acoplamentoId: string | null;
   veiculoId: string | null;
   veiculoPlaca: string;
 }
@@ -63,7 +56,6 @@ export function FrotaImplementosPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editing, setEditing] = useState<ImplementoRow | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [toDelete, setToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -72,12 +64,6 @@ export function FrotaImplementosPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [implementadoraOptions, setImplementadoraOptions] = useState<OptionType[]>([]);
-  const [coupleOpen, setCoupleOpen] = useState(false);
-  const [coupleTarget, setCoupleTarget] = useState<ImplementoRow | null>(null);
-  const [truckOptions, setTruckOptions] = useState<OptionType[]>([]);
-  const [selectedTruck, setSelectedTruck] = useState<OptionType | null>(null);
-  const [coupleDate, setCoupleDate] = useState(todayBr());
-  const [coupling, setCoupling] = useState(false);
   const ITEMS_PER_PAGE = 10;
 
   const patchForm = (partial: Partial<FormState>) => setForm(prev => ({ ...prev, ...partial }));
@@ -132,7 +118,6 @@ export function FrotaImplementosPage() {
               observacoes: item.observacoes || '',
               implementadoraId: item.implementadora_id,
               implementadoraNome: implementadora?.nome || '',
-              acoplamentoId: ativo?.id || null,
               veiculoId: veiculo?.id || null,
               veiculoPlaca: veiculo?.placa || '',
             };
@@ -164,20 +149,7 @@ export function FrotaImplementosPage() {
   }, [currentPage, debouncedSearch]);
 
   const handleOpenCreate = () => {
-    setEditing(null);
     setForm(emptyForm());
-    setDrawerOpen(true);
-  };
-
-  const handleOpenEdit = (item: ImplementoRow) => {
-    setEditing(item);
-    setForm({
-      nome: item.nome,
-      valor: item.valor ?? 0,
-      nf: item.nf,
-      observacoes: item.observacoes,
-      implementadora: implementadoraOptions.find(o => o.value === item.implementadoraId) || null,
-    });
     setDrawerOpen(true);
   };
 
@@ -195,31 +167,19 @@ export function FrotaImplementosPage() {
         observacoes: form.observacoes.trim() || null,
         implementadora_id: form.implementadora?.value || null,
       };
-      if (editing) {
-        const { error } = await supabase.from('frota_implementos').update(payload).eq('id', editing.id);
-        if (error) {
-          toast.error('Erro ao atualizar implemento', error.message);
-        } else {
-          toast.success('Implemento atualizado com sucesso!');
-          setDrawerOpen(false);
-          loadItems();
-        }
+      const { data, error } = await supabase.from('frota_implementos').insert([payload]).select('id, nome').single();
+      if (error || !data) {
+        toast.error('Erro ao cadastrar implemento', error?.message || 'Não foi possível salvar.');
       } else {
-        const { data, error } = await supabase.from('frota_implementos').insert([payload]).select('id, nome').single();
-        if (error || !data) {
-          toast.error('Erro ao cadastrar implemento', error?.message || 'Não foi possível salvar.');
-        } else {
-          await registrarMovimento({
-            implementoId: data.id,
-            tipo: 'cadastro',
-            descricao: `Cadastrou o implemento ${data.nome}`,
-            criadoPor: user?.id || null,
-          });
-          toast.success('Implemento cadastrado com sucesso!');
-          setDrawerOpen(false);
-          setCurrentPage(1);
-          loadItems();
-        }
+        await registrarMovimento({
+          implementoId: data.id,
+          tipo: 'cadastro',
+          descricao: `Cadastrou o implemento ${data.nome}`,
+          criadoPor: user?.id || null,
+        });
+        toast.success('Implemento cadastrado.');
+        setDrawerOpen(false);
+        navigate(`/painel/frota/implementos/${data.id}`);
       }
     } catch (err) {
       console.error('Erro inesperado ao salvar implemento:', err);
@@ -242,70 +202,6 @@ export function FrotaImplementosPage() {
       }
     } catch (err) {
       console.error('Erro ao excluir implemento:', err);
-    }
-  };
-
-  const openCouple = async (item: ImplementoRow) => {
-    setCoupleTarget(item);
-    setSelectedTruck(null);
-    setCoupleDate(todayBr());
-    const { data } = await supabase
-      .from('frota_veiculos')
-      .select('id, placa, modelo_texto')
-      .not('status_operacional', 'in', '("vendido","roubado","baixado")')
-      .order('placa');
-    setTruckOptions(
-      (data || []).map(v => ({
-        value: v.id,
-        label: `${v.placa || 'Sem placa'} — ${v.modelo_texto || 'sem modelo'}`,
-      }))
-    );
-    setCoupleOpen(true);
-  };
-
-  const handleCouple = async () => {
-    if (!coupleTarget || !selectedTruck) {
-      toast.error('Campo obrigatório', 'Selecione o caminhão.');
-      return;
-    }
-    const dataInicio = brToIso(coupleDate) || todayIso();
-    setCoupling(true);
-    try {
-      const err = await acoplarImplemento({
-        veiculoId: selectedTruck.value,
-        implementoId: coupleTarget.id,
-        dataInicio,
-        placa: selectedTruck.label,
-        implementoNome: coupleTarget.nome,
-        criadoPor: user?.id || null,
-      });
-      if (err) {
-        toast.error('Não foi possível acoplar', err);
-      } else {
-        toast.success('Implemento acoplado com sucesso!');
-        setCoupleOpen(false);
-        loadItems();
-      }
-    } finally {
-      setCoupling(false);
-    }
-  };
-
-  const handleUncouple = async (item: ImplementoRow) => {
-    if (!item.acoplamentoId || !item.veiculoId) return;
-    const err = await desacoplarImplemento({
-      acoplamentoId: item.acoplamentoId,
-      veiculoId: item.veiculoId,
-      implementoId: item.id,
-      placa: item.veiculoPlaca,
-      implementoNome: item.nome,
-      criadoPor: user?.id || null,
-    });
-    if (err) {
-      toast.error('Não foi possível desacoplar', err);
-    } else {
-      toast.success('Implemento desacoplado.');
-      loadItems();
     }
   };
 
@@ -376,10 +272,17 @@ export function FrotaImplementosPage() {
               items.map(item => (
                 <tr key={item.id}>
                   <td>
-                    <div className="frota-cell-placa">
-                      <span className="frota-placa-text">{item.nome}</span>
-                      {item.nf && <span className="frota-chassi-text">NF {item.nf}</span>}
-                    </div>
+                    <button
+                      type="button"
+                      className="frota-link-btn"
+                      onClick={() => navigate(`/painel/frota/implementos/${item.id}`)}
+                      style={{ textAlign: 'left' }}
+                    >
+                      <div className="frota-cell-placa">
+                        <span className="frota-placa-text">{item.nome}</span>
+                        {item.nf && <span className="frota-chassi-text">NF {item.nf}</span>}
+                      </div>
+                    </button>
                   </td>
                   <td>{item.implementadoraNome || '—'}</td>
                   <td>{formatMoney(item.valor)}</td>
@@ -398,17 +301,12 @@ export function FrotaImplementosPage() {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'inline-flex', gap: 4 }}>
-                      {item.veiculoId ? (
-                        <button className="action-btn" onClick={() => handleUncouple(item)} title="Desacoplar">
-                          <LinkBreak size={16} />
-                        </button>
-                      ) : (
-                        <button className="action-btn action-btn-edit" onClick={() => openCouple(item)} title="Acoplar">
-                          <LinkSimple size={16} />
-                        </button>
-                      )}
-                      <button className="action-btn action-btn-edit" onClick={() => handleOpenEdit(item)} title="Editar">
-                        <Pencil size={16} />
+                      <button
+                        className="action-btn action-btn-edit"
+                        onClick={() => navigate(`/painel/frota/implementos/${item.id}`)}
+                        title="Abrir implemento"
+                      >
+                        <ArrowSquareOut size={16} />
                       </button>
                       <button
                         className="action-btn action-btn-delete"
@@ -443,7 +341,7 @@ export function FrotaImplementosPage() {
       <Drawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        title={editing ? 'Editar implemento' : 'Novo implemento'}
+        title="Novo implemento"
         subtitle="Nome, valor gasto e quem fez o serviço."
         width="560px"
         footer={
@@ -501,39 +399,6 @@ export function FrotaImplementosPage() {
               />
             </div>
           </div>
-        </div>
-      </Drawer>
-
-      <Drawer
-        isOpen={coupleOpen}
-        onClose={() => setCoupleOpen(false)}
-        title="Acoplar implemento"
-        subtitle={coupleTarget ? `Vincular ${coupleTarget.nome} a um caminhão.` : ''}
-        width="480px"
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--spacing-12)', width: '100%' }}>
-            <Button variant="secondary" onClick={() => setCoupleOpen(false)}>
-              Cancelar
-            </Button>
-            <Button variant="primary" onClick={handleCouple} loading={coupling}>
-              Acoplar
-            </Button>
-          </div>
-        }
-      >
-        <div className="frota-section-fields">
-          <Select
-            label="Caminhão"
-            options={truckOptions}
-            value={selectedTruck}
-            onChange={opt => setSelectedTruck((opt as OptionType) || null)}
-            placeholder="Selecione a placa..."
-          />
-          <InputDate
-            label="Data de início"
-            value={coupleDate}
-            onChange={val => setCoupleDate(typeof val === 'string' ? val : coupleDate)}
-          />
         </div>
       </Drawer>
 

@@ -1,0 +1,2 @@
+ALTER TABLE public.clientes
+  ADD COLUMN IF NOT EXISTS inscricao_estadual text NULL;

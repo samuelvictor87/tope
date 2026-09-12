@@ -4,7 +4,8 @@ import { UploadSimple, Camera, X, File as FileIcon } from '@phosphor-icons/react
 import '../../styles/components/file-upload.css';
 
 interface FileUploadProps {
-  onUpload: (files: File[]) => void;
+  onUpload?: (files: File[]) => void;
+  onFilesSelected?: (files: File[]) => void;
   accept?: string;
   maxSize?: number;
   maxFiles?: number;
@@ -17,6 +18,7 @@ interface FileUploadProps {
 
 export function FileUpload({
   onUpload,
+  onFilesSelected,
   accept = 'image/*,.pdf,.doc,.docx',
   maxSize = 5 * 1024 * 1024,
   maxFiles = 6,
@@ -32,8 +34,13 @@ export function FileUpload({
 
   const handleFiles = (fileList: FileList) => {
     const valid = Array.from(fileList).slice(0, maxFiles).filter(f => f.size <= maxSize);
-    setFiles(prev => [...prev, ...valid].slice(0, maxFiles));
-    onUpload(valid);
+    if (onFilesSelected) {
+      onFilesSelected(valid);
+      if (inputRef.current) inputRef.current.value = '';
+    } else {
+      setFiles(prev => [...prev, ...valid].slice(0, maxFiles));
+      onUpload?.(valid);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -104,7 +111,7 @@ export function FileUpload({
       />
       {error && <span className="input-error-msg">{error}</span>}
 
-      {files.length > 0 && (
+      {!onFilesSelected && files.length > 0 && (
         <ul className="file-upload-list">
           {files.map((f, i) => (
             <li key={i} className="file-upload-item">

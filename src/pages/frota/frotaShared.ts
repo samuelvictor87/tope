@@ -47,6 +47,61 @@ export const LOCADORA_OPTIONS: OptionType[] = [
   { value: 'VIPE', label: 'VIPE' },
 ];
 
+export type FipeVinculoStatus = 'pendente' | 'automatico' | 'falha';
+
+export const FIPE_VINCULO_LABELS: Record<FipeVinculoStatus, string> = {
+  pendente: 'Pendente',
+  automatico: 'FIPE',
+  falha: 'Revisar',
+};
+
+export const FIPE_VINCULO_BADGE: Record<FipeVinculoStatus, BadgeVariant> = {
+  pendente: 'warning',
+  automatico: 'success',
+  falha: 'error',
+};
+
+export function fipeStatusBadge(fipeCodigo: string | null | undefined, vinculoStatus: string | null | undefined): {
+  label: string;
+  variant: BadgeVariant;
+} | null {
+  if (fipeCodigo) return { label: 'FIPE', variant: 'success' };
+  if (vinculoStatus === 'pendente') return { label: 'Pendente', variant: 'warning' };
+  if (vinculoStatus === 'falha') return { label: 'Revisar', variant: 'error' };
+  return null;
+}
+
+export const TIPO_DOCUMENTO_OPTIONS: OptionType[] = [
+  { value: 'check_in_list', label: 'Check-in list' },
+  { value: 'ipva', label: 'IPVA' },
+  { value: 'ordem_remessa', label: 'Ordem de remessa' },
+  { value: 'multas_notificacoes', label: 'Multas notificações' },
+  { value: 'multas_boletos', label: 'Multas boletos' },
+  { value: 'smartec', label: 'Smartec' },
+  { value: 'despachante', label: 'Despachante' },
+  { value: 'outros', label: 'Outros' },
+];
+
+export const TIPO_DOCUMENTO_LABELS: Record<string, string> = Object.fromEntries(
+  TIPO_DOCUMENTO_OPTIONS.map(opt => [opt.value, opt.label])
+);
+
+export function extrairExtensao(nome: string): string {
+  const match = nome.match(/\.[^./\\]+$/);
+  return match ? match[0] : '';
+}
+
+export function extrairNomeBase(nome: string): string {
+  const ext = extrairExtensao(nome);
+  return ext ? nome.slice(0, -ext.length) : nome;
+}
+
+export function montarNomeArquivo(nomeBase: string, ext: string): string {
+  const base = nomeBase.trim();
+  if (!base) return '';
+  return ext ? `${base}${ext}` : base;
+}
+
 export const MOVIMENTO_LABELS: Record<TipoMovimento, string> = {
   cadastro: 'Cadastro',
   acoplamento: 'Acoplamento',

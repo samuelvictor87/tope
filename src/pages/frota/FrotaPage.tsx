@@ -18,23 +18,21 @@ import { supabase } from '../../lib/supabase';
 import {
   brToIso,
   displayAssetStatus,
+  fipeStatusBadge,
   formatMoney,
   labelCatalogoModelo,
-  loadCatalogoModelos,
   LOCADORA_OPTIONS,
-  FAMILY_CATALOGO_OPTIONS,
   parseIntOrNull,
   parseMoney,
   registrarMovimento,
-  snapshotModeloTexto,
   STATUS_ATIVO_BADGE,
   STATUS_ATIVO_LABELS,
   STATUS_ATIVO_OPTIONS,
-  TIPO_VEICULO_OPTIONS,
   asObject,
-  type CatalogoModelo,
   type StatusOperacional,
 } from './frotaShared';
+import { fipeSaveFields, FrotaFipeFields } from './FrotaFipeFields';
+import { useFipeCascata } from './useFipeCascata';
 import '../../styles/components/frota.css';
 import '../../styles/components/table.css';
 
@@ -46,6 +44,8 @@ interface FrotaVeiculoLista {
   caminhao_id: string | null;
   catalogo: { tipo: string; marca: string; familia: string | null; modelo: string } | null;
   status_operacional: StatusOperacional;
+  fipe_codigo: string | null;
+  fipe_vinculo_status: string | null;
   implementos: string[];
   valorImplementos: number;
 }
@@ -72,11 +72,7 @@ function emptyForm() {
     placa: '',
     chassi: '',
     renavam: '',
-    tipo: TIPO_VEICULO_OPTIONS[0] as OptionType | null,
-    familia: null as OptionType | null,
-    modelo: null as OptionType | null,
     ano_fabricacao: '',
-    ano_modelo: '',
     cor: '',
     locadora: { value: 'TOPE', label: 'TOPE' } as OptionType | null,
     status_operacional: { value: 'disponivel', label: 'Disponível' } as OptionType | null,
@@ -111,8 +107,8 @@ export function FrotaPage() {
     roubados: 0,
     baixados: 0,
   });
-  const [catalogo, setCatalogo] = useState<CatalogoModelo[]>([]);
   const ITEMS_PER_PAGE = 10;
+  const fipe = useFipeCascata((title, message) => toast.error(title, message));
 
   const patchForm = (partial: Partial<FormState>) => setForm(prev => ({ ...prev, ...partial }));
 
@@ -146,7 +142,7 @@ export function FrotaPage() {
         .from('frota_veiculos')
         .select(
           `
-          id, placa, chassi, modelo_texto, status_operacional, caminhao_id,
+          id, placa, chassi, modelo_texto, status_operacional, caminhao_id, fipe_codigo, fipe_vinculo_status,
           caminhao:caminhoes ( tipo, marca, familia, modelo ),
           frota_acoplamentos (
             data_fim,
@@ -207,6 +203,8 @@ export function FrotaPage() {
               caminhao_id: item.caminhao_id || null,
               catalogo: catalogoJoin,
               status_operacional: item.status_operacional as StatusOperacional,
+              fipe_codigo: item.fipe_codigo || null,
+              fipe_vinculo_status: item.fipe_vinculo_status || null,
               implementos: ativos.map(impl => impl.nome),
               valorImplementos: ativos.reduce((sum, impl) => sum + Number(impl.valor || 0), 0),
             };
@@ -235,7 +233,6 @@ export function FrotaPage() {
 
   useEffect(() => {
     loadKpis();
-    loadCatalogoModelos().then(setCatalogo);
   }, []);
 
   const applyKpiFilter = (value: string) => {
@@ -248,6 +245,8 @@ export function FrotaPage() {
 
   const handleOpenCreate = () => {
     setForm(emptyForm());
+    fipe.resetAll();
+    void fipe.handleTipoChange({ value: 'caminhao', label: 'Caminhão' });
     setDrawerOpen(true);
   };
 
@@ -260,15 +259,20 @@ export function FrotaPage() {
       toast.error('Campos obrigatórios', 'Selecione o status do ativo.');
       return;
     }
-
-    if (!form.modelo) {
-      toast.error('Campos obrigatórios', 'Selecione o modelo no catálogo.');
+    if (!fipe.tipo) {
+      toast.error('Campos obrigatórios', 'Selecione o tipo de veículo.');
       return;
     }
-
-    const modeloCat = catalogo.find(c => c.id === form.modelo?.value);
-    if (!modeloCat) {
-      toast.error('Modelo inválido', 'Selecione um modelo cadastrado.');
+    if (!fipe.marca) {
+      toast.error('Campos obrigatórios', 'Selecione a marca do veículo na tabela FIPE.');
+      return;
+    }
+    if (!fipe.ano) {
+      toast.error('Campos obrigatórios', 'Selecione o ano do veículo na tabela FIPE.');
+      return;
+    }
+    if (!fipe.modelo) {
+      toast.error('Campos obrigatórios', 'Selecione o modelo do veículo na tabela FIPE.');
       return;
     }
 
@@ -278,17 +282,24 @@ export function FrotaPage() {
         placa: form.placa.trim() || null,
         chassi: form.chassi.trim() || null,
         renavam: form.renavam.trim() || null,
-        caminhao_id: modeloCat.id,
-        marca: modeloCat.marca,
-        modelo_texto: snapshotModeloTexto(modeloCat.marca, modeloCat.modelo),
         ano_fabricacao: parseIntOrNull(form.ano_fabricacao),
-        ano_modelo: parseIntOrNull(form.ano_modelo),
         cor: form.cor.trim() || null,
         locadora: form.locadora?.value || null,
         status_operacional: form.status_operacional.value,
         nf_compra: form.nf_compra.trim() || null,
         data_emissao_nf: brToIso(form.data_emissao_nf),
         valor_compra: parseMoney(form.valor_compra),
+        ...fipeSaveFields({
+          tipo: fipe.snapshot.tipo,
+          marca: fipe.marca,
+          ano: fipe.ano,
+          modelo: fipe.modelo,
+          valor: fipe.valor,
+          anoModeloNumero: fipe.anoModeloNumero,
+          codigoFipe: fipe.snapshot.codigoFipe,
+          combustivel: fipe.snapshot.combustivel,
+          mesReferencia: fipe.snapshot.mesReferencia,
+        }),
       };
 
       const { data, error } = await supabase.from('frota_veiculos').insert([payload]).select('id, placa').single();
@@ -433,25 +444,27 @@ export function FrotaPage() {
               <th>Modelo</th>
               <th>Implementos</th>
               <th>Status</th>
+              <th>FIPE</th>
               <th style={{ textAlign: 'right' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                <td colSpan={6} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                   Carregando caminhões...
                 </td>
               </tr>
             ) : veiculos.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                <td colSpan={6} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                   Nenhum caminhão encontrado.
                 </td>
               </tr>
             ) : (
               veiculos.map(v => {
                 const status = displayAssetStatus(v.status_operacional);
+                const fipeBadge = fipeStatusBadge(v.fipe_codigo, v.fipe_vinculo_status);
                 return (
                   <tr
                     key={v.id}
@@ -465,14 +478,14 @@ export function FrotaPage() {
                       </div>
                     </td>
                     <td>
-                      {v.catalogo ? (
-                        <span className="frota-placa-text">{labelCatalogoModelo(v.catalogo)}</span>
-                      ) : (
-                        <div className="frota-cell-placa">
-                          <span>{v.modelo_texto || '—'}</span>
-                          <Badge variant="warning">Equipamento</Badge>
-                        </div>
-                      )}
+                      <div className="frota-cell-placa">
+                        <span className="frota-placa-text">
+                          {v.modelo_texto || (v.catalogo ? labelCatalogoModelo(v.catalogo) : '—')}
+                        </span>
+                        {v.catalogo && !v.modelo_texto && (
+                          <span className="frota-chassi-text">{v.catalogo.marca}</span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       {v.implementos.length > 0 ? (
@@ -486,6 +499,13 @@ export function FrotaPage() {
                     </td>
                     <td>
                       <Badge variant={STATUS_ATIVO_BADGE[status]}>{STATUS_ATIVO_LABELS[status]}</Badge>
+                    </td>
+                    <td>
+                      {fipeBadge ? (
+                        <Badge variant={fipeBadge.variant}>{fipeBadge.label}</Badge>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 4 }}>
@@ -571,54 +591,30 @@ export function FrotaPage() {
                   value={form.renavam}
                   onChange={e => patchForm({ renavam: e.target.value })}
                 />
-                <Select
-                  label="Tipo"
-                  options={TIPO_VEICULO_OPTIONS}
-                  value={form.tipo}
-                  onChange={opt => patchForm({
-                    tipo: opt as OptionType,
-                    familia: null,
-                    modelo: null,
-                  })}
-                />
               </div>
-              <div className="frota-input-row">
-                <Select
-                  label="Família"
-                  options={[
-                    { value: '', label: 'Todas' },
-                    ...FAMILY_CATALOGO_OPTIONS.filter(f =>
-                      catalogo.some(c => c.tipo === form.tipo?.value && c.familia === f.value)
-                    ),
-                  ]}
-                  value={form.familia}
-                  onChange={opt => patchForm({ familia: (opt as OptionType) || null, modelo: null })}
-                  isClearable
-                  placeholder="Opcional"
-                />
-                <Select
-                  label="Modelo"
-                  options={catalogo
-                    .filter(c =>
-                      c.tipo === form.tipo?.value &&
-                      (!form.familia?.value || c.familia === form.familia.value)
-                    )
-                    .map(c => ({ value: c.id, label: labelCatalogoModelo(c) }))}
-                  value={form.modelo}
-                  onChange={opt => patchForm({ modelo: (opt as OptionType) || null })}
-                  placeholder="Selecione o modelo..."
-                />
-              </div>
+              <FrotaFipeFields
+                tipo={fipe.tipo}
+                marca={fipe.marca}
+                ano={fipe.ano}
+                modelo={fipe.modelo}
+                valor={fipe.valor}
+                marcaOpcoes={fipe.marcaOpcoes}
+                anoOpcoes={fipe.anoOpcoes}
+                modeloOpcoes={fipe.modeloOpcoes}
+                loadingMarcas={fipe.loadingMarcas}
+                loadingAnos={fipe.loadingAnos}
+                loadingModelos={fipe.loadingModelos}
+                loadingValor={fipe.loadingValor}
+                onTipoChange={fipe.handleTipoChange}
+                onMarcaChange={fipe.handleMarcaChange}
+                onAnoChange={fipe.handleAnoChange}
+                onModeloChange={fipe.handleModeloChange}
+              />
               <div className="frota-input-row">
                 <Input
                   label="Ano fabricação"
                   value={form.ano_fabricacao}
                   onChange={e => patchForm({ ano_fabricacao: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                />
-                <Input
-                  label="Ano modelo"
-                  value={form.ano_modelo}
-                  onChange={e => patchForm({ ano_modelo: e.target.value.replace(/\D/g, '').slice(0, 4) })}
                 />
                 <Input
                   label="Cor"

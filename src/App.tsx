@@ -12,6 +12,7 @@ import { CaminhoesPage } from './pages/caminhoes/CaminhoesPage';
 import { FrotaPage } from './pages/frota/FrotaPage';
 import { FrotaVeiculoPage } from './pages/frota/FrotaVeiculoPage';
 import { FrotaImplementosPage } from './pages/frota/FrotaImplementosPage';
+import { FrotaImplementoPage } from './pages/frota/FrotaImplementoPage';
 import { ImplementadorasPage } from './pages/frota/ImplementadorasPage';
 import { ConfiguracoesPage } from './pages/configuracoes/ConfiguracoesPage';
 import { NovaCotacaoPage } from './pages/cotacoes/NovaCotacaoPage';
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/painel/usuarios" element={<ProtectedRoute><UsuariosPage /></ProtectedRoute>} />
             <Route path="/painel/frota" element={<ProtectedRoute><FrotaPage /></ProtectedRoute>} />
             <Route path="/painel/frota/implementos" element={<ProtectedRoute><FrotaImplementosPage /></ProtectedRoute>} />
+            <Route path="/painel/frota/implementos/:id" element={<ProtectedRoute><FrotaImplementoPage /></ProtectedRoute>} />
             <Route path="/painel/frota/:id" element={<ProtectedRoute><FrotaVeiculoPage /></ProtectedRoute>} />
             <Route path="/painel/implementadoras" element={<ProtectedRoute><ImplementadorasPage /></ProtectedRoute>} />
             <Route path="/painel/caminhoes" element={<ProtectedRoute><CaminhoesPage /></ProtectedRoute>} />

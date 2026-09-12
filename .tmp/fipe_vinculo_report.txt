@@ -1,0 +1,7 @@
+Modo: dry-run
+Veículos: 134
+Grupos únicos: 5
+Consultas FIPE (cache miss): 0
+Vinculados: 0 (em 0 grupos)
+Falhas: 127
+  falha_fipe_timeout: 127

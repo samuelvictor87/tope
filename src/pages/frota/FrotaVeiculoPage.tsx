@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, FileText, LinkBreak, Plus, Trash } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowSquareOut, Eye, FileText, LinkBreak, Plus, Trash, X } from '@phosphor-icons/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -15,6 +15,7 @@ import { Textarea } from '../../components/ui/Textarea';
 import { FileUpload } from '../../components/ui/FileUpload';
 import { useToast } from '../../components/ui/Toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { Modal } from '../../components/ui/Modal';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import {
@@ -26,25 +27,31 @@ import {
   formatMoney,
   isoToBr,
   LOCADORA_OPTIONS,
-  MOVIMENTO_LABELS,
-  FAMILY_CATALOGO_OPTIONS,
   parseIntOrNull,
   parseMoney,
   registrarMovimento,
-  snapshotModeloTexto,
-  STATUS_ATIVO_BADGE,
   STATUS_ATIVO_LABELS,
   STATUS_ATIVO_OPTIONS,
   todayBr,
   todayIso,
   asObject,
-  labelCatalogoModelo,
-  loadCatalogoModelos,
-  TIPO_VEICULO_OPTIONS,
+  TIPO_DOCUMENTO_OPTIONS,
+  TIPO_DOCUMENTO_LABELS,
+  extrairExtensao,
+  extrairNomeBase,
+  montarNomeArquivo,
   type CatalogoModelo,
   type StatusOperacional,
-  type TipoMovimento,
 } from './frotaShared';
+import { backupIfEmpty, fipeSaveFields, FrotaFipeFields } from './FrotaFipeFields';
+import { useFipeCascata } from './useFipeCascata';
+import { labelAnoFipe } from '../../services/fipeService';
+import {
+  FrotaMovimentoItem,
+  MOVIMENTO_SELECT,
+  mapMovimentoRow,
+  type MovimentoRow,
+} from './FrotaMovimentoItem';
 import '../../styles/components/frota.css';
 import '../../styles/components/table.css';
 
@@ -65,6 +72,20 @@ interface VeiculoDetalhe {
   nf_compra: string;
   data_emissao_nf: string | null;
   valor_compra: number | null;
+  tipo_veiculo: string | null;
+  valor_fipe: number | null;
+  fipe_codigo: string | null;
+  fipe_codigo_marca: string | null;
+  fipe_codigo_modelo: string | null;
+  fipe_codigo_ano: string | null;
+  fipe_combustivel: string | null;
+  fipe_mes_referencia: string | null;
+  backup_marca: string | null;
+  backup_modelo_texto: string | null;
+  backup_ano_modelo: number | null;
+  backup_caminhao_id: string | null;
+  fipe_vinculo_status: string | null;
+  fipe_vinculo_erro: string | null;
 }
 
 interface AcoplamentoAtivo {
@@ -84,15 +105,16 @@ interface AnexoRow {
   arquivo_path: string;
   mime_type: string;
   tamanho_bytes: number | null;
+  tipo_documento: string;
   criado_em: string;
   signedUrl?: string;
 }
 
-interface MovimentoRow {
-  id: string;
-  tipo: TipoMovimento;
-  descricao: string;
-  criado_em: string;
+interface PendingAnexo {
+  file: File;
+  nomeBase: string;
+  ext: string;
+  tipo: OptionType | null;
 }
 
 function emptyVeiculoForm() {
@@ -101,13 +123,9 @@ function emptyVeiculoForm() {
     chassi: '',
     renavam: '',
     ano_fabricacao: '',
-    ano_modelo: '',
     cor: '',
     locadora: null as OptionType | null,
     status_operacional: STATUS_ATIVO_OPTIONS[0] as OptionType | null,
-    tipo: TIPO_VEICULO_OPTIONS[0] as OptionType | null,
-    familia: null as OptionType | null,
-    modelo: null as OptionType | null,
     nf_compra: '',
     data_emissao_nf: '',
     valor_compra: 0 as number | string,
@@ -152,11 +170,14 @@ export function FrotaVeiculoPage() {
   const [anexos, setAnexos] = useState<AnexoRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [anexoToDelete, setAnexoToDelete] = useState<AnexoRow | null>(null);
+  const [deletingAnexo, setDeletingAnexo] = useState(false);
+  const [pendingAnexos, setPendingAnexos] = useState<PendingAnexo[]>([]);
+  const [tipoModalOpen, setTipoModalOpen] = useState(false);
 
   const [movimentos, setMovimentos] = useState<MovimentoRow[]>([]);
   const [obsTexto, setObsTexto] = useState('');
   const [obsSaving, setObsSaving] = useState(false);
-  const [catalogo, setCatalogo] = useState<CatalogoModelo[]>([]);
+  const fipe = useFipeCascata((title, message) => toast.error(title, message));
 
   const patchForm = (partial: Partial<VeiculoForm>) => setForm(prev => ({ ...prev, ...partial }));
   const patchImpl = (partial: Partial<ImplForm>) => setImplForm(prev => ({ ...prev, ...partial }));
@@ -190,28 +211,54 @@ export function FrotaVeiculoPage() {
       nf_compra: data.nf_compra || '',
       data_emissao_nf: data.data_emissao_nf,
       valor_compra: data.valor_compra != null ? Number(data.valor_compra) : null,
+      tipo_veiculo: data.tipo_veiculo || catalogoJoin?.tipo || null,
+      valor_fipe: data.valor_fipe != null ? Number(data.valor_fipe) : null,
+      fipe_codigo: data.fipe_codigo || null,
+      fipe_codigo_marca: data.fipe_codigo_marca || null,
+      fipe_codigo_modelo: data.fipe_codigo_modelo || null,
+      fipe_codigo_ano: data.fipe_codigo_ano || null,
+      fipe_combustivel: data.fipe_combustivel || null,
+      fipe_mes_referencia: data.fipe_mes_referencia || null,
+      backup_marca: data.backup_marca || null,
+      backup_modelo_texto: data.backup_modelo_texto || null,
+      backup_ano_modelo: data.backup_ano_modelo != null ? Number(data.backup_ano_modelo) : null,
+      backup_caminhao_id: data.backup_caminhao_id || null,
+      fipe_vinculo_status: data.fipe_vinculo_status || null,
+      fipe_vinculo_erro: data.fipe_vinculo_erro || null,
     };
     setVeiculo(mapped);
     const displayStatus = displayAssetStatus(mapped.status_operacional);
-    const tipoOpt = TIPO_VEICULO_OPTIONS.find(o => o.value === catalogoJoin?.tipo) || TIPO_VEICULO_OPTIONS[0];
-    const familiaOpt = catalogoJoin?.familia
-      ? FAMILY_CATALOGO_OPTIONS.find(o => o.value === catalogoJoin.familia) || { value: catalogoJoin.familia, label: catalogoJoin.familia }
-      : null;
     setForm({
       placa: mapped.placa,
       chassi: mapped.chassi,
       renavam: mapped.renavam,
-      tipo: tipoOpt,
-      familia: familiaOpt,
-      modelo: catalogoJoin ? { value: catalogoJoin.id, label: labelCatalogoModelo(catalogoJoin) } : null,
       ano_fabricacao: mapped.ano_fabricacao != null ? String(mapped.ano_fabricacao) : '',
-      ano_modelo: mapped.ano_modelo != null ? String(mapped.ano_modelo) : '',
       cor: mapped.cor,
       locadora: LOCADORA_OPTIONS.find(o => o.value === mapped.locadora) || null,
       status_operacional: STATUS_ATIVO_OPTIONS.find(o => o.value === displayStatus) || STATUS_ATIVO_OPTIONS[0],
       nf_compra: mapped.nf_compra,
       data_emissao_nf: isoToBr(mapped.data_emissao_nf),
       valor_compra: mapped.valor_compra ?? 0,
+    });
+    const tipoValue = (mapped.tipo_veiculo === 'carro' ? 'carro' : 'caminhao') as 'caminhao' | 'carro';
+    fipe.hydrateSnapshot({
+      tipo: tipoValue,
+      marca: mapped.fipe_codigo_marca
+        ? { value: mapped.fipe_codigo_marca, label: mapped.marca || mapped.fipe_codigo_marca }
+        : mapped.marca
+          ? { value: mapped.marca, label: mapped.marca }
+          : null,
+      ano: mapped.fipe_codigo_ano
+        ? { value: mapped.fipe_codigo_ano, label: labelAnoFipe({ Label: mapped.fipe_codigo_ano, Value: mapped.fipe_codigo_ano }) }
+        : mapped.ano_modelo != null
+          ? { value: String(mapped.ano_modelo), label: String(mapped.ano_modelo) }
+          : null,
+      modelo: mapped.fipe_codigo_modelo
+        ? { value: mapped.fipe_codigo_modelo, label: mapped.modelo_texto || mapped.fipe_codigo_modelo }
+        : mapped.modelo_texto
+          ? { value: mapped.modelo_texto, label: mapped.modelo_texto }
+          : null,
+      valor: mapped.valor_fipe,
     });
   }, [id]);
 
@@ -287,6 +334,7 @@ export function FrotaVeiculoPage() {
         arquivo_path: item.arquivo_path,
         mime_type: item.mime_type || '',
         tamanho_bytes: item.tamanho_bytes,
+        tipo_documento: item.tipo_documento || 'outros',
         criado_em: item.criado_em,
         signedUrl,
       });
@@ -298,14 +346,14 @@ export function FrotaVeiculoPage() {
     if (!id) return;
     const { data, error } = await supabase
       .from('frota_movimentacoes')
-      .select('id, tipo, descricao, criado_em')
+      .select(MOVIMENTO_SELECT)
       .eq('veiculo_id', id)
       .order('criado_em', { ascending: false });
     if (error) {
       console.error('Erro ao carregar movimentação:', error);
       return;
     }
-    setMovimentos((data || []) as MovimentoRow[]);
+    setMovimentos((data || []).map(mapMovimentoRow));
   }, [id]);
 
   const refreshAll = useCallback(async () => {
@@ -313,10 +361,6 @@ export function FrotaVeiculoPage() {
     await Promise.all([loadVeiculo(), loadAcoplamentos(), loadAnexos(), loadMovimentos()]);
     setLoading(false);
   }, [loadVeiculo, loadAcoplamentos, loadAnexos, loadMovimentos]);
-
-  useEffect(() => {
-    loadCatalogoModelos().then(setCatalogo);
-  }, []);
 
   useEffect(() => {
     refreshAll();
@@ -332,30 +376,60 @@ export function FrotaVeiculoPage() {
       toast.error('Campos obrigatórios', 'Selecione o status do ativo.');
       return;
     }
-    if (!form.modelo && veiculo?.caminhao_id) {
-      toast.error('Campos obrigatórios', 'Selecione o modelo no catálogo.');
+    if (fipe.touched && !fipe.completo) {
+      if (!fipe.tipo) {
+        toast.error('Campos obrigatórios', 'Selecione o tipo de veículo.');
+        return;
+      }
+      if (!fipe.marca) {
+        toast.error('Campos obrigatórios', 'Selecione a marca do veículo na tabela FIPE.');
+        return;
+      }
+      if (!fipe.ano) {
+        toast.error('Campos obrigatórios', 'Selecione o ano do veículo na tabela FIPE.');
+        return;
+      }
+      toast.error('Campos obrigatórios', 'Selecione o modelo do veículo na tabela FIPE.');
       return;
     }
     setSaving(true);
     try {
-      const modeloCat = catalogo.find(c => c.id === form.modelo?.value) || null;
       const payload = {
         placa: form.placa.trim() || null,
         chassi: form.chassi.trim() || null,
         renavam: form.renavam.trim() || null,
-        caminhao_id: modeloCat?.id || null,
-        marca: modeloCat?.marca || null,
-        modelo_texto: modeloCat
-          ? snapshotModeloTexto(modeloCat.marca, modeloCat.modelo)
-          : veiculo?.modelo_texto || null,
         ano_fabricacao: parseIntOrNull(form.ano_fabricacao),
-        ano_modelo: parseIntOrNull(form.ano_modelo),
         cor: form.cor.trim() || null,
         locadora: form.locadora?.value || null,
         status_operacional: form.status_operacional.value,
         nf_compra: form.nf_compra.trim() || null,
         data_emissao_nf: brToIso(form.data_emissao_nf),
         valor_compra: parseMoney(form.valor_compra),
+        ...(fipe.touched && fipe.completo
+          ? {
+              ...fipeSaveFields({
+                tipo: fipe.snapshot.tipo,
+                marca: fipe.marca,
+                ano: fipe.ano,
+                modelo: fipe.modelo,
+                valor: fipe.valor,
+                anoModeloNumero: fipe.anoModeloNumero,
+                codigoFipe: fipe.snapshot.codigoFipe,
+                combustivel: fipe.snapshot.combustivel,
+                mesReferencia: fipe.snapshot.mesReferencia,
+              }),
+              ...backupIfEmpty({
+                backup_marca: veiculo?.backup_marca,
+                backup_modelo_texto: veiculo?.backup_modelo_texto,
+                backup_ano_modelo: veiculo?.backup_ano_modelo,
+                backup_caminhao_id: veiculo?.backup_caminhao_id,
+                marca: veiculo?.marca,
+                modelo_texto: veiculo?.modelo_texto,
+                ano_modelo: veiculo?.ano_modelo,
+                caminhao_id: veiculo?.caminhao_id,
+              }),
+            }
+          : {}),
       };
       const { error } = await supabase.from('frota_veiculos').update(payload).eq('id', id);
       if (error) {
@@ -479,27 +553,69 @@ export function FrotaVeiculoPage() {
     }
   };
 
-  const handleUpload = async (files: File[]) => {
-    if (!id || files.length === 0) return;
+  const handleFilesSelected = (files: File[]) => {
+    if (files.length === 0) return;
+    const novos = files.map(file => ({
+      file,
+      nomeBase: extrairNomeBase(file.name),
+      ext: extrairExtensao(file.name),
+      tipo: null,
+    }));
+    setPendingAnexos(prev => [...prev, ...novos]);
+    setTipoModalOpen(true);
+  };
+
+  const cancelarAnexos = () => {
+    setPendingAnexos([]);
+    setTipoModalOpen(false);
+  };
+
+  const removerPendingAnexo = (index: number) => {
+    setPendingAnexos(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length === 0) setTipoModalOpen(false);
+      return next;
+    });
+  };
+
+  const atualizarNomePending = (index: number, nomeBase: string) => {
+    setPendingAnexos(prev => prev.map((item, i) => (i === index ? { ...item, nomeBase } : item)));
+  };
+
+  const atualizarTipoPending = (index: number, tipo: OptionType | null) => {
+    setPendingAnexos(prev => prev.map((item, i) => (i === index ? { ...item, tipo } : item)));
+  };
+
+  const todosProntos =
+    pendingAnexos.length > 0 &&
+    pendingAnexos.every(item => item.tipo && item.nomeBase.trim().length > 0);
+
+  const confirmarAnexos = async () => {
+    if (!id || !todosProntos) return;
     setUploading(true);
     try {
-      for (const file of files) {
+      for (const item of pendingAnexos) {
+        const file = item.file;
+        const nomeFinal = montarNomeArquivo(item.nomeBase, item.ext);
+        const tipoSlug = item.tipo!.value;
+        const tipoLabel = TIPO_DOCUMENTO_LABELS[tipoSlug] || tipoSlug;
         const safeName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
         const path = `veiculos/${id}/${Date.now()}_${safeName}`;
         const { error: uploadErr } = await supabase.storage.from('frota-documentos').upload(path, file);
         if (uploadErr) {
-          toast.warning('Aviso de upload', `Não foi possível enviar ${file.name}.`);
+          toast.warning('Aviso de upload', `Não foi possível enviar ${nomeFinal}.`);
           continue;
         }
         const { data: publicData } = supabase.storage.from('frota-documentos').getPublicUrl(path);
         const { error: insertErr } = await supabase.from('frota_veiculo_anexos').insert({
           veiculo_id: id,
           criado_por: user?.id || null,
-          arquivo_nome: file.name,
+          arquivo_nome: nomeFinal,
           arquivo_url: publicData.publicUrl,
           arquivo_path: path,
           mime_type: file.type || 'application/octet-stream',
           tamanho_bytes: file.size,
+          tipo_documento: tipoSlug,
         });
         if (insertErr) {
           toast.error('Erro ao registrar anexo', insertErr.message);
@@ -508,10 +624,12 @@ export function FrotaVeiculoPage() {
         await registrarMovimento({
           veiculoId: id,
           tipo: 'documento',
-          descricao: `Anexou o documento ${file.name}`,
+          descricao: `Anexou documento ${tipoLabel}: ${nomeFinal}`,
           criadoPor: user?.id || null,
         });
       }
+      setPendingAnexos([]);
+      setTipoModalOpen(false);
       loadAnexos();
       loadMovimentos();
     } finally {
@@ -520,19 +638,25 @@ export function FrotaVeiculoPage() {
   };
 
   const handleDeleteAnexo = async () => {
-    if (!anexoToDelete || !id) return;
-    await supabase.from('frota_veiculo_anexos').delete().eq('id', anexoToDelete.id);
-    await supabase.storage.from('frota-documentos').remove([anexoToDelete.arquivo_path]);
-    await registrarMovimento({
-      veiculoId: id,
-      tipo: 'documento',
-      descricao: `Removeu o documento ${anexoToDelete.arquivo_nome}`,
-      criadoPor: user?.id || null,
-    });
+    if (!anexoToDelete || !id || deletingAnexo) return;
+    const anexo = anexoToDelete;
+    setDeletingAnexo(true);
     setAnexoToDelete(null);
-    toast.success('Documento removido.');
-    loadAnexos();
-    loadMovimentos();
+    try {
+      await supabase.from('frota_veiculo_anexos').delete().eq('id', anexo.id);
+      await supabase.storage.from('frota-documentos').remove([anexo.arquivo_path]);
+      await registrarMovimento({
+        veiculoId: id,
+        tipo: 'documento',
+        descricao: `Removeu o documento ${anexo.arquivo_nome}`,
+        criadoPor: user?.id || null,
+      });
+      toast.success('Documento removido.');
+      loadAnexos();
+      loadMovimentos();
+    } finally {
+      setDeletingAnexo(false);
+    }
   };
 
   const handleAddObs = async () => {
@@ -578,7 +702,7 @@ export function FrotaVeiculoPage() {
       pageTitle={veiculo?.placa || 'Caminhão'}
       pageSubtitle={
         veiculo
-          ? `${veiculo.catalogo ? labelCatalogoModelo(veiculo.catalogo) : veiculo.modelo_texto || 'Sem modelo'} · ${STATUS_ATIVO_LABELS[status]}`
+          ? `${veiculo.modelo_texto || veiculo.marca || 'Sem modelo'} · ${STATUS_ATIVO_LABELS[status]}`
           : 'Carregando...'
       }
       headerActions={
@@ -617,51 +741,42 @@ export function FrotaVeiculoPage() {
               </div>
               <div className="frota-input-row">
                 <Input label="RENAVAM" value={form.renavam} onChange={e => patchForm({ renavam: e.target.value })} />
-                <Select
-                  label="Tipo"
-                  options={TIPO_VEICULO_OPTIONS}
-                  value={form.tipo}
-                  onChange={opt => patchForm({ tipo: opt as OptionType, familia: null, modelo: null })}
-                />
               </div>
-              {veiculo && !veiculo.caminhao_id && (
-                <p className="frota-muted">Este ativo não está no catálogo (equipamento/implemento da planilha).</p>
+              <FrotaFipeFields
+                tipo={fipe.tipo}
+                marca={fipe.marca}
+                ano={fipe.ano}
+                modelo={fipe.modelo}
+                valor={fipe.valor}
+                marcaOpcoes={fipe.marcaOpcoes}
+                anoOpcoes={fipe.anoOpcoes}
+                modeloOpcoes={fipe.modeloOpcoes}
+                loadingMarcas={fipe.loadingMarcas}
+                loadingAnos={fipe.loadingAnos}
+                loadingModelos={fipe.loadingModelos}
+                loadingValor={fipe.loadingValor}
+                onTipoChange={fipe.handleTipoChange}
+                onMarcaChange={fipe.handleMarcaChange}
+                onAnoChange={fipe.handleAnoChange}
+                onModeloChange={fipe.handleModeloChange}
+              />
+              {veiculo?.backup_modelo_texto && (
+                <p className="frota-muted">
+                  Backup original: {veiculo.backup_marca ? `${veiculo.backup_marca} · ` : ''}
+                  {veiculo.backup_modelo_texto}
+                  {veiculo.backup_ano_modelo ? ` · ${veiculo.backup_ano_modelo}` : ''}
+                </p>
               )}
-              <div className="frota-input-row">
-                <Select
-                  label="Família"
-                  options={FAMILY_CATALOGO_OPTIONS.filter(f =>
-                    catalogo.some(c => c.tipo === form.tipo?.value && c.familia === f.value)
-                  )}
-                  value={form.familia}
-                  onChange={opt => patchForm({ familia: (opt as OptionType) || null, modelo: null })}
-                  isClearable
-                  placeholder="Opcional"
-                />
-                <Select
-                  label="Modelo"
-                  options={catalogo
-                    .filter(c =>
-                      c.tipo === form.tipo?.value &&
-                      (!form.familia?.value || c.familia === form.familia.value)
-                    )
-                    .map(c => ({ value: c.id, label: labelCatalogoModelo(c) }))}
-                  value={form.modelo}
-                  onChange={opt => patchForm({ modelo: (opt as OptionType) || null })}
-                  isClearable
-                  placeholder="Selecione o modelo..."
-                />
-              </div>
+              {veiculo?.fipe_vinculo_status === 'falha' && veiculo.fipe_vinculo_erro && (
+                <p className="frota-muted" style={{ color: 'var(--color-error-600)' }}>
+                  Vínculo FIPE automático: {veiculo.fipe_vinculo_erro.replace(/_/g, ' ')}
+                </p>
+              )}
               <div className="frota-input-row">
                 <Input
                   label="Ano fabricação"
                   value={form.ano_fabricacao}
                   onChange={e => patchForm({ ano_fabricacao: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                />
-                <Input
-                  label="Ano modelo"
-                  value={form.ano_modelo}
-                  onChange={e => patchForm({ ano_modelo: e.target.value.replace(/\D/g, '').slice(0, 4) })}
                 />
                 <Input label="Cor" value={form.cor} onChange={e => patchForm({ cor: e.target.value })} />
               </div>
@@ -746,7 +861,13 @@ export function FrotaVeiculoPage() {
                     <tr key={item.id}>
                       <td>
                         <div className="frota-cell-placa">
-                          <span className="frota-placa-text">{item.nome}</span>
+                          <button
+                            type="button"
+                            className="frota-link-btn frota-placa-text"
+                            onClick={() => navigate(`/painel/frota/implementos/${item.implementoId}`)}
+                          >
+                            {item.nome}
+                          </button>
                           {item.nf && <span className="frota-chassi-text">NF {item.nf}</span>}
                         </div>
                       </td>
@@ -754,9 +875,33 @@ export function FrotaVeiculoPage() {
                       <td>{formatMoney(item.valor)}</td>
                       <td>{isoToBr(item.data_inicio)}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <button className="action-btn" onClick={() => handleDesacoplar(item)} title="Desacoplar">
-                          <LinkBreak size={16} />
-                        </button>
+                        <div style={{ display: 'inline-flex', gap: 4 }}>
+                          <button
+                            type="button"
+                            className="action-btn action-btn-edit"
+                            onClick={() => navigate(`/painel/frota/implementos/${item.implementoId}`)}
+                            title="Ver implemento"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            className="action-btn action-btn-edit"
+                            onClick={() =>
+                              window.open(
+                                `/painel/frota/implementos/${item.implementoId}`,
+                                '_blank',
+                                'noopener,noreferrer'
+                              )
+                            }
+                            title="Abrir implemento em nova guia"
+                          >
+                            <ArrowSquareOut size={16} />
+                          </button>
+                          <button className="action-btn" onClick={() => handleDesacoplar(item)} title="Desacoplar">
+                            <LinkBreak size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -771,8 +916,8 @@ export function FrotaVeiculoPage() {
         <div className="frota-detail-card">
           <FileUpload
             label={uploading ? 'Enviando...' : 'Anexar documentos'}
-            onUpload={handleUpload}
-            disabled={uploading}
+            onFilesSelected={handleFilesSelected}
+            disabled={uploading || tipoModalOpen}
             maxSize={10 * 1024 * 1024}
             accept="application/pdf,image/jpeg,image/png,image/webp,.doc,.docx"
           />
@@ -781,6 +926,7 @@ export function FrotaVeiculoPage() {
               <thead>
                 <tr>
                   <th>Arquivo</th>
+                  <th>Tipo</th>
                   <th>Enviado em</th>
                   <th style={{ textAlign: 'right' }}>Ações</th>
                 </tr>
@@ -788,7 +934,7 @@ export function FrotaVeiculoPage() {
               <tbody>
                 {anexos.length === 0 ? (
                   <tr>
-                    <td colSpan={3} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: 'var(--spacing-32)', color: 'var(--color-grey-400)' }}>
                       Nenhum documento anexado.
                     </td>
                   </tr>
@@ -799,6 +945,11 @@ export function FrotaVeiculoPage() {
                         <a className="frota-link-btn" href={anexo.signedUrl || anexo.arquivo_url} target="_blank" rel="noreferrer">
                           <FileText size={16} /> {anexo.arquivo_nome}
                         </a>
+                      </td>
+                      <td>
+                        <Badge variant="neutral">
+                          {TIPO_DOCUMENTO_LABELS[anexo.tipo_documento] || anexo.tipo_documento}
+                        </Badge>
                       </td>
                       <td>{formatDateTime(anexo.criado_em)}</td>
                       <td style={{ textAlign: 'right' }}>
@@ -834,15 +985,7 @@ export function FrotaVeiculoPage() {
               <li className="frota-muted">Nenhuma movimentação ainda.</li>
             ) : (
               movimentos.map(mov => (
-                <li key={mov.id} className="frota-timeline-item">
-                  <Badge variant={mov.tipo === 'desacoplamento' ? 'warning' : mov.tipo === 'documento' ? 'neutral' : 'primary'}>
-                    {MOVIMENTO_LABELS[mov.tipo] || mov.tipo}
-                  </Badge>
-                  <div>
-                    <p className="frota-timeline-desc">{mov.descricao}</p>
-                    <p className="frota-chassi-text">{formatDateTime(mov.criado_em)}</p>
-                  </div>
-                </li>
+                <FrotaMovimentoItem key={mov.id} mov={mov} context="veiculo" navigate={navigate} />
               ))
             )}
           </ul>
@@ -918,10 +1061,65 @@ export function FrotaVeiculoPage() {
         </div>
       </Drawer>
 
+      <Modal
+        open={tipoModalOpen}
+        onClose={cancelarAnexos}
+        title="Tipo do documento"
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={cancelarAnexos} disabled={uploading}>
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              onClick={confirmarAnexos}
+              loading={uploading}
+              disabled={!todosProntos}
+            >
+              Anexar
+            </Button>
+          </>
+        }
+      >
+        {pendingAnexos.map((item, index) => (
+          <div key={`${item.file.name}-${index}`} className="frota-anexo-tipo-row">
+            <div className="frota-anexo-tipo-nome-input">
+              <div className="frota-anexo-nome-field">
+                <Input
+                  placeholder="Nome do arquivo"
+                  value={item.nomeBase}
+                  onChange={e => atualizarNomePending(index, e.target.value)}
+                />
+                {item.ext && <span className="frota-anexo-ext">{item.ext}</span>}
+              </div>
+            </div>
+            <div className="frota-anexo-tipo-select">
+              <Select
+                options={TIPO_DOCUMENTO_OPTIONS}
+                value={item.tipo}
+                onChange={opt => atualizarTipoPending(index, (opt as OptionType) || null)}
+                placeholder="Selecione o tipo..."
+              />
+            </div>
+            <button
+              type="button"
+              className="frota-anexo-tipo-remove"
+              onClick={() => removerPendingAnexo(index)}
+              title="Remover arquivo"
+              aria-label="Remover arquivo"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </Modal>
+
       <ConfirmModal
         isOpen={!!anexoToDelete}
         onClose={() => setAnexoToDelete(null)}
         onConfirm={handleDeleteAnexo}
+        loading={deletingAnexo}
         title="Excluir documento"
         message={
           <>
